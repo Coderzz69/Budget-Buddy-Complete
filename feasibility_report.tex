@@ -1,0 +1,174 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{times}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{inputenc}
+\usepackage[T1]{fontenc}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue
+}
+
+\title{\textbf{Feasibility Report}\\[0.5em]
+       \large Budget Buddy Project}
+\author{Prepared by: Your Name}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+%--- Introduction ---
+\section{Introduction}
+This report evaluates the feasibility of the \textbf{Budget Buddy} application. It examines the technical, operational, economic, and legal aspects of the project, and outlines both functional and non-functional requirements.
+
+%--- Project Overview ---
+\section{Project Overview}
+Budget Buddy is a personal finance management tool built with React Native (Expo) and TypeScript. It helps users track income, expenses, set budgets, and visualize financial data through interactive charts.
+
+%--- Functional Requirements ---
+\section{Functional Requirements}
+
+\begin{enumerate}[label=\textbf{FR\arabic*:}, leftmargin=*, itemsep=0.5em]
+
+  \item \textbf{User Authentication}
+        \begin{itemize}
+            \item Users can register with email and password.
+            \item Users can log in and log out securely.
+            \item Password reset via email link.
+        \end{itemize}
+
+  \item \textbf{Expense Management}
+        \begin{itemize}
+            \item Add, edit, and delete expense entries.
+            \item Categorize expenses (e.g., Food, Transport).
+            \item Attach optional receipt images.
+        \end{itemize}
+
+  \item \textbf{Income Management}
+        \begin{itemize}
+            \item Record income sources and amounts.
+        \end{itemize}
+
+  \item \textbf{Budget Creation}
+        \begin{itemize}
+            \item Define monthly budgets per category.
+            \item Visual warnings when spending exceeds the budget.
+        \end{itemize}
+
+  \item \textbf{Reporting and Analytics}
+        \begin{itemize}
+            \item Generate daily, weekly, and monthly summary reports.
+            \item Display charts for expense distribution.
+        \end{itemize}
+
+  \item \textbf{Data Synchronization}
+        \begin{itemize}
+            \item Sync data across devices via cloud backend (e.g., Firebase).
+        \end{itemize}
+
+  \item \textbf{Settings}
+        \begin{itemize}
+            \item Theme selection (light/dark).
+            \item Currency selection.
+        \end{itemize}
+
+\end{enumerate}
+
+%--- Non-Functional Requirements ---
+\section{Non-Functional Requirements}
+
+\begin{enumerate}[label=\textbf{NFR\arabic*:}, leftmargin=*, itemsep=0.5em]
+
+  \item \textbf{Performance}
+        \begin{itemize}
+            \item App launch time under 2 seconds on modern devices.
+            \item UI interactions respond within 100 ms.
+        \end{itemize}
+
+  \item \textbf{Scalability}
+        \begin{itemize}
+            \item Backend must support up to 10,000 concurrent users.
+        \end{itemize}
+
+  \item \textbf{Security}
+        \begin{itemize}
+            \item Data encrypted at rest and in transit (HTTPS/TLS).
+            \item Secure authentication using OAuth2 or JWT.
+        \end{itemize}
+
+  \item \textbf{Usability}
+        \begin{itemize}
+            \item Intuitive UI adhering to Material Design guidelines.
+            \item Accessible to users with visual impairments (WCAG 2.1 AA).
+        \end{itemize}
+
+  \item \textbf{Reliability}
+        \begin{itemize}
+            \item 99.9\% uptime for cloud services.
+            \item Automatic data backup with versioning.
+        \end{itemize}
+
+  \item \textbf{Maintainability}
+        \begin{itemize}
+            \item Codebase follows clean architecture and TypeScript strict typing.
+            \item Comprehensive unit and integration test coverage of at least 80\%.
+        \end{itemize}
+
+  \item \textbf{Portability}
+        \begin{itemize}
+            \item Runs on iOS 13+ and Android 8+ devices.
+        \end{itemize}
+
+  \item \textbf{Legal and Compliance}
+        \begin{itemize}
+            \item GDPR compliant data handling for EU users.
+            \item Provide privacy policy and terms of service.
+        \end{itemize}
+
+\end{enumerate}
+
+%--- Feasibility Analysis ---
+\section{Feasibility Analysis}
+
+\subsection{Technical Feasibility}
+The chosen stack -- React Native with Expo, TypeScript, and Firebase -- is mature,
+well-documented, and supported across platforms. Existing libraries cover most
+functional requirements, reducing development effort significantly.
+
+\subsection{Operational Feasibility}
+Users can install the app from app stores. Cloud backend services offer managed
+authentication, database, and storage, simplifying operations and ongoing maintenance.
+
+\subsection{Economic Feasibility}
+Estimated development effort: 3 developers $\times$ 4 months $\approx$ 480 person-hours.
+
+\medskip
+\noindent Cost breakdown (approximate):
+\begin{itemize}
+  \item Development labor: \$30,000
+  \item Cloud services (Firebase Blaze tier): \$50--\$100/month (scalable)
+  \item App Store fees: \$25 (Apple), \$25 (Google)
+\end{itemize}
+
+\noindent Total initial cost is under \$35,000, which is reasonable for a small-scale
+mobile SaaS product.
+
+\subsection{Legal Feasibility}
+Data handling complies with GDPR by anonymizing personal identifiers and providing
+user data export and delete features. A clear privacy policy will be published before
+launch.
+
+%--- Conclusion ---
+\section{Conclusion}
+The Budget Buddy project is feasible across technical, operational, economic, and legal
+dimensions. The outlined functional and non-functional requirements provide a clear
+roadmap for implementation. We recommend proceeding to the development phase.
+
+\end{document}
