@@ -1,4 +1,4 @@
-import { useSignUp, useAuth } from '@clerk/expo';
+import { useSignUp, useAuth, useUser } from '@clerk/expo';
 import * as DocumentPicker from 'expo-document-picker';
 import { api, syncUser } from '@/utils/api';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -26,9 +26,12 @@ export default function CompleteProfileScreen() {
     const [username, setUsername] = useState('');
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
+    const [phoneNumber, setPhoneNumber] = useState('');
+    const [step, setStep] = useState(1); // 1: Profile Info, 2: Bank Statement
     const [statementFile, setStatementFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
     const [loading, setLoading] = useState(false);
-    const { getToken } = useAuth();
+    const { getToken, isSignedIn } = useAuth();
+    const { user: clerkUser, isLoaded: userLoaded } = useUser();
     const [alertConfig, setAlertConfig] = useState<{ visible: boolean; title: string; message: string }>({
         visible: false,
         title: '',
@@ -39,8 +42,13 @@ export default function CompleteProfileScreen() {
         if (isLoaded && signUp) {
             setFirstName(signUp.firstName || '');
             setLastName(signUp.lastName || '');
+        } else if (userLoaded && clerkUser) {
+            setFirstName(clerkUser.firstName || '');
+            setLastName(clerkUser.lastName || '');
+            setUsername(clerkUser.username || '');
+            setPhoneNumber(clerkUser.primaryPhoneNumber?.phoneNumber || '');
         }
-    }, [isLoaded, signUp]);
+    }, [isLoaded, signUp, userLoaded, clerkUser]);
 
     const pickDocument = async () => {
         try {
@@ -58,66 +66,61 @@ export default function CompleteProfileScreen() {
     };
 
     const onCompleteProfilePress = async () => {
-        if (!username || !firstName || !lastName) {
-            setAlertConfig({ visible: true, title: 'Error', message: 'Please fill in all fields' });
+        if (!username || !firstName || !lastName || !phoneNumber) {
+            setAlertConfig({ visible: true, title: 'Error', message: 'Please fill in all mandatory fields (Name, Username, Phone)' });
             return;
         }
 
-        if (!isLoaded) return;
-
+        if (!isLoaded && !userLoaded) return;
         setLoading(true);
 
         try {
-            await signUp.update({
-                username,
-                firstName,
-                lastName,
-            });
+            if (!isSignedIn && signUp) {
+                // In signup flow
+                await signUp.update({
+                    username,
+                    firstName,
+                    lastName,
+                });
 
-            // Should be complete now usually, unless more steps needed
-            if (signUp.status === 'complete') {
-                await setActive({ session: signUp.createdSessionId });
-
-                // Session is now active. Fetch the token to sync the user right away
-                const token = await getToken({ template: 'budget-buddy' }) || await getToken();
-                if (token) {
-                    await syncUser(token, {
-                        clerkId: signUp.createdUserId!,
-                        username,
+                if (signUp.status === 'complete') {
+                    await setActive({ session: signUp.createdSessionId });
+                    const token = await getToken();
+                    if (token) {
+                        await syncUser(token, {
+                            clerkId: signUp.createdUserId!,
+                            username,
+                            firstName,
+                            lastName,
+                            phoneNumber,
+                        });
+                    }
+                    setStep(2); // Move to CSV step
+                }
+            } else if (isSignedIn && clerkUser) {
+                // Already signed in, update info
+                try {
+                    await clerkUser.update({
                         firstName,
                         lastName,
                     });
-                    
-                    if (statementFile) {
-                        const uploadWithRetry = async (retries = 3, delay = 1000) => {
-                            try {
-                                const formData = new FormData();
-                                formData.append('file', {
-                                    uri: statementFile.uri,
-                                    name: statementFile.name,
-                                    type: statementFile.mimeType || 'text/csv',
-                                } as any);
-                                await api.uploadFile('/ml/upload-statement/', formData);
-                                console.log('File uploaded successfully');
-                            } catch (error) {
-                                if (retries > 0) {
-                                    console.warn(`Upload failed, retrying in ${delay}ms... (${retries} retries left)`);
-                                    await new Promise(res => setTimeout(res, delay));
-                                    return uploadWithRetry(retries - 1, delay * 2);
-                                }
-                                console.error('Upload failed after max retries:', error);
-                            }
-                        };
-                        uploadWithRetry();
-                    }
+                } catch (clerkError) {
+                    console.warn('Clerk update failed (might be non-critical):', clerkError);
                 }
-
-                router.replace('/dashboard');
-            } else {
-                setAlertConfig({ visible: true, title: 'Error', message: 'Profile update failed to complete signup.' });
-                console.error('Signup status:', signUp.status);
+                
+                const token = await getToken();
+                if (token) {
+                    await syncUser(token, {
+                        clerkId: clerkUser.id,
+                        email: clerkUser.primaryEmailAddress?.emailAddress,
+                        firstName,
+                        lastName,
+                        username,
+                        phoneNumber,
+                    });
+                }
+                setStep(2); // Move to CSV step
             }
-
         } catch (err: any) {
             console.error('Profile completion error:', JSON.stringify(err, null, 2));
             setAlertConfig({
@@ -130,17 +133,36 @@ export default function CompleteProfileScreen() {
         }
     };
 
-    if (!isLoaded) {
+    const onFinishOnboarding = async () => {
+        if (statementFile) {
+            setLoading(true);
+            try {
+                const formData = new FormData();
+                formData.append('file', {
+                    uri: statementFile.uri,
+                    name: statementFile.name,
+                    type: statementFile.mimeType || 'text/csv',
+                } as any);
+                await api.uploadFile('/ml/upload-statement/', formData);
+                console.log('File uploaded successfully');
+            } catch (error) {
+                console.error('Upload failed:', error);
+                setAlertConfig({ visible: true, title: 'Upload Failed', message: 'Could not process CSV, but your profile is saved.' });
+            } finally {
+                setLoading(false);
+            }
+        }
+        router.replace('/dashboard');
+    };
+
+    if (!isLoaded && !userLoaded) {
         return (
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#F97316" />
+                <Text style={styles.loadingText}>Preparing setup...</Text>
             </View>
         );
     }
-
-    // Guard: If no signup in progress, maybe redirect back to login?
-    // But helpful to keep for dev/testing. 
-    // if (!signUp) return <Text>No signup in progress</Text>;
 
     return (
         <KeyboardAvoidingView
@@ -155,82 +177,126 @@ export default function CompleteProfileScreen() {
                     entering={FadeInDown.duration(600).springify()}
                     style={styles.formContainer}
                 >
-                    <Text style={styles.title}>Complete Profile</Text>
-                    <Text style={styles.subtitle}>
-                        Just a few more details to finish setting up your account.
-                    </Text>
-
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Username</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="johndoe123"
-                            placeholderTextColor="#666"
-                            value={username}
-                            onChangeText={setUsername}
-                            autoCapitalize="none"
-                        />
-                    </View>
-
-                    <View style={styles.row}>
-                        <View style={[styles.inputGroup, { flex: 1 }]}>
-                            <Text style={styles.label}>First Name</Text>
-                            <TextInput
-                                style={styles.input}
-                                placeholder="John"
-                                placeholderTextColor="#666"
-                                value={firstName}
-                                onChangeText={setFirstName}
-                            />
-                        </View>
-                        <View style={[styles.inputGroup, { flex: 1 }]}>
-                            <Text style={styles.label}>Last Name</Text>
-                            <TextInput
-                                style={styles.input}
-                                placeholder="Doe"
-                                placeholderTextColor="#666"
-                                value={lastName}
-                                onChangeText={setLastName}
-                            />
-                        </View>
-                    </View>
-
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Bank Statement CSV (Optional)</Text>
-                        <TouchableOpacity
-                            style={styles.fileButton}
-                            onPress={pickDocument}
-                            activeOpacity={0.7}
-                        >
-                            <Text style={styles.fileButtonText}>
-                                {statementFile ? statementFile.name : 'Select 6-Month CSV File'}
+                    {step === 1 ? (
+                        <>
+                            <Text style={styles.title}>Basic Information</Text>
+                            <Text style={styles.subtitle}>
+                                Step 1: Basic Information
                             </Text>
-                        </TouchableOpacity>
-                        {statementFile && (
-                            <Text style={styles.fileHelpText}>
-                                We'll categorize these transactions automatically.
-                            </Text>
-                        )}
-                    </View>
 
-                    <TouchableOpacity
-                        onPress={onCompleteProfilePress}
-                        disabled={loading}
-                        activeOpacity={0.8}
-                    >
-                        <LinearGradient
-                            colors={['#F97316', '#FB923C']}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 0 }}
-                            style={styles.button}
-                        >
-                            {loading ? (
-                                <ActivityIndicator color="#000" />
-                            ) : (
-                                <Text style={styles.buttonText}>Finish Signup</Text>
-                            )}
-                        </LinearGradient>
-                    </TouchableOpacity>
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>Username</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="johndoe123"
+                                    placeholderTextColor="#666"
+                                    value={username}
+                                    onChangeText={setUsername}
+                                    autoCapitalize="none"
+                                />
+                            </View>
+
+                            <View style={styles.row}>
+                                <View style={[styles.inputGroup, { flex: 1 }]}>
+                                    <Text style={styles.label}>First Name</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="John"
+                                        placeholderTextColor="#666"
+                                        value={firstName}
+                                        onChangeText={setFirstName}
+                                    />
+                                </View>
+                                <View style={[styles.inputGroup, { flex: 1 }]}>
+                                    <Text style={styles.label}>Last Name</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="Doe"
+                                        placeholderTextColor="#666"
+                                        value={lastName}
+                                        onChangeText={setLastName}
+                                    />
+                                </View>
+                            </View>
+
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>Phone Number</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="+91 9876543210"
+                                    placeholderTextColor="#666"
+                                    value={phoneNumber}
+                                    onChangeText={setPhoneNumber}
+                                    keyboardType="phone-pad"
+                                />
+                            </View>
+
+                            <TouchableOpacity
+                                onPress={onCompleteProfilePress}
+                                disabled={loading}
+                                activeOpacity={0.8}
+                            >
+                                <LinearGradient
+                                    colors={['#F97316', '#FB923C']}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 0 }}
+                                    style={styles.button}
+                                >
+                                    {loading ? (
+                                        <ActivityIndicator color="#000" />
+                                    ) : (
+                                        <Text style={styles.buttonText}>Continue</Text>
+                                    )}
+                                </LinearGradient>
+                            </TouchableOpacity>
+                        </>
+                    ) : (
+                        <>
+                            <Text style={styles.title}>Bank Statement</Text>
+                            <Text style={styles.subtitle}>
+                                Do you want to upload your bank statement? We can automatically categorize your last 6 months of transactions.
+                            </Text>
+
+                            <View style={styles.inputGroup}>
+                                <TouchableOpacity
+                                    style={styles.fileButton}
+                                    onPress={pickDocument}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={styles.fileButtonText}>
+                                        {statementFile ? statementFile.name : 'Select CSV File (Optional)'}
+                                    </Text>
+                                </TouchableOpacity>
+                                {statementFile && (
+                                    <Text style={styles.fileHelpText}>
+                                        Ready to categorize {statementFile.name}
+                                    </Text>
+                                )}
+                            </View>
+
+                            <TouchableOpacity
+                                onPress={onFinishOnboarding}
+                                disabled={loading}
+                                activeOpacity={0.8}
+                                style={{ marginTop: 24 }}
+                            >
+                                <LinearGradient
+                                    colors={statementFile ? ['#F97316', '#FB923C'] : ['#3A3A3C', '#2C2C2E']}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 0 }}
+                                    style={styles.button}
+                                >
+                                    {loading ? (
+                                        <ActivityIndicator color="#fff" />
+                                    ) : (
+                                        <Text style={[styles.buttonText, { color: statementFile ? '#000' : '#fff' }]}>
+                                            {statementFile ? 'Upload and Finish' : 'Skip and Finish'}
+                                        </Text>
+                                    )}
+                                </LinearGradient>
+                            </TouchableOpacity>
+                        </>
+                    )}
 
                 </Animated.View>
             </ScrollView>
@@ -249,7 +315,12 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#000',
+        backgroundColor: '#0F172A',
+    },
+    loadingText: {
+        color: '#94A3B8',
+        marginTop: 16,
+        fontSize: 16,
     },
     keyboardAvoidingView: {
         flex: 1,

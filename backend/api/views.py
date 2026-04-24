@@ -435,7 +435,7 @@ class SyncUserView(APIView):
         payload = request.data or {}
 
         name = payload.get('name')
-        if not name:
+        if not name and ('firstName' in payload or 'lastName' in payload or 'username' in payload):
             parts = [payload.get('firstName'), payload.get('lastName')]
             name = ' '.join(p for p in parts if p).strip() or payload.get('username')
 
@@ -453,15 +453,28 @@ class SyncUserView(APIView):
             )
 
         try:
-            user, _ = sync_user_record(
-                clerk_id=clerk_id,
-                email=email,
-                name=name or decoded.get('name'),
-                phone_number=payload.get('phoneNumber'),
-                profile_pic=payload.get('profilePic'),
-                currency=payload.get('currency', 'INR'),
-            )
-            return Response(UserSerializer(user).data)
+            # Prepare update map
+            update_data = {
+                'clerk_id': clerk_id,
+                'email': email,
+            }
+            if name:
+                update_data['name'] = name
+            elif decoded.get('name') and not name:
+                 update_data['name'] = decoded.get('name')
+                 
+            if 'phoneNumber' in payload:
+                update_data['phone_number'] = payload['phoneNumber']
+            if 'profilePic' in payload:
+                update_data['profile_pic'] = payload['profilePic']
+            if 'currency' in payload:
+                update_data['currency'] = payload['currency']
+
+            user, _ = sync_user_record(**update_data)
+            data = UserSerializer(user).data
+            # Only require name for onboarding to be complete
+            data['needsOnboarding'] = not user.name
+            return Response(data)
         except Exception as e:
             import traceback
             print(f"DEBUG: SyncUser Error: {str(e)}")
@@ -1021,7 +1034,49 @@ class UploadStatementView(APIView):
                 ))
             
             if records:
-                MLTrainingRow.objects.bulk_create(records, batch_size=500)
+                with django_transaction.atomic():
+                    # Save for ML training
+                    MLTrainingRow.objects.bulk_create(records, batch_size=500)
+                    
+                    # Also tentatively create actual Transaction objects for the dashboard
+                    # We need an account to link them to.
+                    account = Account.objects.filter(user=user).first()
+                    if account:
+                        tx_objects = []
+                        total_delta = 0
+                        
+                        # We also need categories from DB
+                        categories = Category.objects.filter(Q(user=user) | Q(user__isnull=True))
+                        cat_map = {c.name.lower(): c for c in categories}
+                        
+                        # Get a default category for fallback
+                        default_cat = cat_map.get('others') or cat_map.get('uncategorized') or categories.first()
+
+                        for rec in records:
+                            # Map predicted category to actual DB Category
+                            category = None
+                            if rec.predictedCategory:
+                                category = cat_map.get(rec.predictedCategory.lower())
+                            
+                            if not category:
+                                category = default_cat
+
+                            tx_objects.append(Transaction(
+                                user=user,
+                                account=account,
+                                category=category,
+                                type='expense' if rec.amount > 0 else 'income', # Assuming expenses are positive in CSV
+                                amount=abs(rec.amount),
+                                note=rec.descriptionRaw,
+                                occurredAt=rec.occurredAt
+                            ))
+                            total_delta += (-abs(rec.amount) if rec.amount > 0 else abs(rec.amount))
+                        
+                        if tx_objects:
+                            Transaction.objects.bulk_create(tx_objects, batch_size=500)
+                            # Update account balance
+                            account.balance += total_delta
+                            account.save()
                 
             return Response({'success': True, 'processed': len(records)})
         except Exception as e:
