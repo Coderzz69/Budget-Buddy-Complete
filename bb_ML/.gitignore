@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv/
+env/
+venv/
+outputs/
+*.csv
+!synthetic_transactions.csv
+!synthetic_merchant_map.csv
+!merchant_category_map.csv

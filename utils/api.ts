@@ -142,17 +142,15 @@ class ApiClient {
 
 export const api = new ApiClient();
 
-export interface SyncUserPayload {
+export type SyncUserPayload = {
     clerkId: string;
     email?: string;
     firstName?: string;
     lastName?: string;
     username?: string;
     name?: string;
-    phoneNumber?: string;
-    profilePic?: string;
     currency?: string;
-}
+};
 
 // Sync user to database after authentication
 export const syncUser = async (token: string, userData: SyncUserPayload) => {
@@ -163,7 +161,6 @@ export const syncUser = async (token: string, userData: SyncUserPayload) => {
         clerkId: userData.clerkId,
         email: userData.email,
         currency: userData.currency,
-        phoneNumber: userData.phoneNumber,
         name: userData.name || nameParts.join(' ').trim() || userData.username || undefined,
     };
 
