@@ -10,7 +10,7 @@ from django.utils import timezone as django_timezone
 from rest_framework import viewsets, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated
 
 from .models import (
     User, Account, Category, Transaction, Budget, 
@@ -418,7 +418,7 @@ class InsightsSummaryView(APIView):
 
 class SyncUserView(APIView):
     authentication_classes = []
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def _decode_token(self, request):
         auth_header = request.META.get('HTTP_AUTHORIZATION', '')
@@ -435,7 +435,7 @@ class SyncUserView(APIView):
         payload = request.data or {}
 
         name = payload.get('name')
-        if not name and ('firstName' in payload or 'lastName' in payload or 'username' in payload):
+        if not name:
             parts = [payload.get('firstName'), payload.get('lastName')]
             name = ' '.join(p for p in parts if p).strip() or payload.get('username')
 
@@ -453,28 +453,15 @@ class SyncUserView(APIView):
             )
 
         try:
-            # Prepare update map
-            update_data = {
-                'clerk_id': clerk_id,
-                'email': email,
-            }
-            if name:
-                update_data['name'] = name
-            elif decoded.get('name') and not name:
-                 update_data['name'] = decoded.get('name')
-                 
-            if 'phoneNumber' in payload:
-                update_data['phone_number'] = payload['phoneNumber']
-            if 'profilePic' in payload:
-                update_data['profile_pic'] = payload['profilePic']
-            if 'currency' in payload:
-                update_data['currency'] = payload['currency']
-
-            user, _ = sync_user_record(**update_data)
-            data = UserSerializer(user).data
-            # Only require name for onboarding to be complete
-            data['needsOnboarding'] = not user.name
-            return Response(data)
+            user, _ = sync_user_record(
+                clerk_id=clerk_id,
+                email=email,
+                name=name or decoded.get('name'),
+                phone_number=payload.get('phoneNumber'),
+                profile_pic=payload.get('profilePic'),
+                currency=payload.get('currency', 'INR'),
+            )
+            return Response(UserSerializer(user).data)
         except Exception as e:
             import traceback
             print(f"DEBUG: SyncUser Error: {str(e)}")
@@ -1027,6 +1014,20 @@ class UploadStatementView(APIView):
                 records.append(MLTrainingRow(
                     user=user,
                     occurredAt=dt,
+                    amount=amount,
+                    descriptionRaw=raw_desc,
+                    predictedCategory=cat,
+                    confidence=conf
+                ))
+            
+            if records:
+                MLTrainingRow.objects.bulk_create(records, batch_size=500)
+                
+            return Response({'success': True, 'processed': len(records)})
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
                     amount=amount,
                     descriptionRaw=raw_desc,
                     predictedCategory=cat,
