@@ -119,7 +119,7 @@ export default function SignupScreen() {
                 });
 
                 // Explicitly redirect to dashboard
-                router.replace('/dashboard');
+                router.replace('/');
             } else {
                 console.error('Signup status not complete:', completeSignUp.status);
                 // @ts-ignore

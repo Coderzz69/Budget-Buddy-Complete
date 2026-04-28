@@ -1,4 +1,4 @@
-import { useSignUp, useAuth } from '@clerk/expo';
+import { useSignUp, useAuth, useUser } from '@clerk/expo';
 import * as DocumentPicker from 'expo-document-picker';
 import { api, syncUser } from '@/utils/api';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import CustomAlert from '@/components/CustomAlert';
+import { useData } from '@/hooks/useData';
 
 export default function CompleteProfileScreen() {
     const router = useRouter();
@@ -29,18 +30,25 @@ export default function CompleteProfileScreen() {
     const [statementFile, setStatementFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
     const [loading, setLoading] = useState(false);
     const { getToken } = useAuth();
+    const { user, isLoaded: isUserLoaded } = useUser();
     const [alertConfig, setAlertConfig] = useState<{ visible: boolean; title: string; message: string }>({
         visible: false,
         title: '',
         message: '',
     });
+    const { fetchAllData } = useData();
 
     useEffect(() => {
+        console.log('CompleteProfile: isLoaded=', isLoaded, 'isUserLoaded=', isUserLoaded, 'hasSignUp=', !!signUp, 'hasUser=', !!user);
         if (isLoaded && signUp) {
             setFirstName(signUp.firstName || '');
             setLastName(signUp.lastName || '');
+        } else if (isUserLoaded && user) {
+            setFirstName(user.firstName || '');
+            setLastName(user.lastName || '');
+            setUsername(user.username || '');
         }
-    }, [isLoaded, signUp]);
+    }, [isLoaded, signUp, isUserLoaded, user]);
 
     const pickDocument = async () => {
         try {
@@ -63,61 +71,71 @@ export default function CompleteProfileScreen() {
             return;
         }
 
-        if (!isLoaded) return;
+        const isAuthLoaded = signUp ? isLoaded : isUserLoaded;
+        if (!isAuthLoaded) return;
 
         setLoading(true);
-
         try {
-            await signUp.update({
-                username,
-                firstName,
-                lastName,
-            });
+            if (signUp) {
+                await signUp.update({
+                    username,
+                    firstName,
+                    lastName,
+                });
 
-            // Should be complete now usually, unless more steps needed
-            if (signUp.status === 'complete') {
-                await setActive({ session: signUp.createdSessionId });
-
-                // Session is now active. Fetch the token to sync the user right away
-                const token = await getToken({ template: 'budget-buddy' }) || await getToken();
-                if (token) {
-                    await syncUser(token, {
-                        clerkId: signUp.createdUserId!,
-                        username,
-                        firstName,
-                        lastName,
-                    });
-
-                    if (statementFile) {
-                        const uploadWithRetry = async (retries = 3, delay = 1000) => {
-                            try {
-                                const formData = new FormData();
-                                formData.append('file', {
-                                    uri: statementFile.uri,
-                                    name: statementFile.name,
-                                    type: statementFile.mimeType || 'text/csv',
-                                } as any);
-                                await api.uploadFile('/ml/upload-statement/', formData);
-                                console.log('File uploaded successfully');
-                            } catch (error) {
-                                if (retries > 0) {
-                                    console.warn(`Upload failed, retrying in ${delay}ms... (${retries} retries left)`);
-                                    await new Promise(res => setTimeout(res, delay));
-                                    return uploadWithRetry(retries - 1, delay * 2);
-                                }
-                                console.error('Upload failed after max retries:', error);
-                            }
-                        };
-                        uploadWithRetry();
-                    }
+                if (signUp.status === 'complete') {
+                    await setActive({ session: signUp.createdSessionId });
                 }
-
-                router.replace('/dashboard');
-            } else {
-                setAlertConfig({ visible: true, title: 'Error', message: 'Profile update failed to complete signup.' });
-                console.error('Signup status:', signUp.status);
+            } else if (user) {
+                await user.update({
+                    firstName,
+                    lastName,
+                    username,
+                });
             }
 
+            // After updating Clerk, sync with our backend
+            const token = await getToken({ template: 'budget-buddy' }) || await getToken();
+            if (token) {
+                await syncUser(token, {
+                    clerkId: (user?.id || signUp?.createdUserId)!,
+                    email: user?.primaryEmailAddress?.emailAddress || signUp?.emailAddress || undefined,
+                    username,
+                    firstName,
+                    lastName,
+                });
+
+                if (statementFile) {
+                    const uploadWithRetry = async (retries = 3, delay = 1000) => {
+                        try {
+                            const formData = new FormData();
+                            const fileName = statementFile.name || 'statement.csv';
+                            const fileType = statementFile.mimeType || 'text/csv';
+                            
+                            formData.append('file', {
+                                uri: statementFile.uri,
+                                name: fileName,
+                                type: fileType,
+                            } as any);
+                            
+                            await api.uploadFile('/ml/upload-statement/', formData);
+                            console.log('File uploaded successfully');
+                        } catch (error) {
+                            if (retries > 0) {
+                                console.warn(`Upload failed, retrying in ${delay}ms... (${retries} retries left)`);
+                                await new Promise(res => setTimeout(res, delay));
+                                return uploadWithRetry(retries - 1, delay * 2);
+                            }
+                            console.error('Upload failed after max retries:', error);
+                        }
+                    };
+                    await uploadWithRetry();
+                }
+            }
+            
+            // Explicitly fetch data before navigating to ensure store is populated
+            await fetchAllData();
+            router.replace('/');
         } catch (err: any) {
             console.error('Profile completion error:', JSON.stringify(err, null, 2));
             setAlertConfig({
@@ -130,7 +148,7 @@ export default function CompleteProfileScreen() {
         }
     };
 
-    if (!isLoaded) {
+    if (!isLoaded && !isUserLoaded) {
         return (
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#F97316" />

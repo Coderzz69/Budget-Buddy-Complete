@@ -10,6 +10,7 @@ import { Plus, Target, AlertCircle, CheckCircle2, Layers } from 'lucide-react-na
 import { formatCurrency } from '../../utils/formatters';
 import { router } from 'expo-router';
 import { EmptyState } from '../../components/EmptyState';
+import { IconSymbol } from '../../components/ui/icon-symbol';
 
 export default function Budget() {
   const colorScheme = useColorScheme() ?? 'dark';
@@ -116,34 +117,43 @@ export default function Budget() {
                 const spent = budget.spent || 0;
                 const progress = spent / budget.limit;
                 return (
-                  <GlassCard key={budget.id} className="p-5">
-                    <View className="flex-row justify-between items-center mb-3">
-                      <View className="flex-row items-center">
-                        <View className="w-10 h-10 rounded-xl bg-slate-900 items-center justify-center mr-3">
-                          <Target size={20} color={getProgressColor(progress)} />
+                  <Pressable
+                    key={budget.id}
+                    onPress={() => router.push(`/budgets/${budget.id}`)}
+                  >
+                    <GlassCard className="p-5">
+                      <View className="flex-row justify-between items-center mb-3">
+                        <View className="flex-row items-center">
+                          <View className="w-10 h-10 rounded-xl bg-slate-900 items-center justify-center mr-3">
+                            <IconSymbol 
+                              name={categories.find(c => c.id === budget.categoryId)?.icon || 'ellipsis.circle.fill'} 
+                              size={20} 
+                              color={getProgressColor(progress)} 
+                            />
+                          </View>
+                          <View>
+                            <Text className="text-white font-bold">{getCategoryName(budget.categoryId)}</Text>
+                            <Text className="text-slate-400 text-xs">{formatCurrency(budget.limit)} limit</Text>
+                          </View>
                         </View>
-                        <View>
-                          <Text className="text-white font-bold">{getCategoryName(budget.categoryId)}</Text>
-                          <Text className="text-slate-400 text-xs">{formatCurrency(budget.limit)} limit</Text>
+                        <View className="items-end">
+                          <Text className="text-white font-bold">{formatCurrency(spent)}</Text>
+                          <Text className="text-slate-400 text-xs">spent</Text>
                         </View>
                       </View>
-                      <View className="items-end">
-                        <Text className="text-white font-bold">{formatCurrency(spent)}</Text>
-                        <Text className="text-slate-400 text-xs">spent</Text>
+                      
+                      {/* Category Progress Bar */}
+                      <View className="h-2 w-full bg-slate-900 rounded-full overflow-hidden">
+                        <View 
+                          className="h-full rounded-full" 
+                          style={{ 
+                            width: `${Math.min(progress * 100, 100)}%`,
+                            backgroundColor: getProgressColor(progress)
+                          }} 
+                        />
                       </View>
-                    </View>
-                    
-                    {/* Category Progress Bar */}
-                    <View className="h-2 w-full bg-slate-900 rounded-full overflow-hidden">
-                      <View 
-                        className="h-full rounded-full" 
-                        style={{ 
-                          width: `${Math.min(progress * 100, 100)}%`,
-                          backgroundColor: getProgressColor(progress)
-                        }} 
-                      />
-                    </View>
-                  </GlassCard>
+                    </GlassCard>
+                  </Pressable>
                 );
               })
             )}

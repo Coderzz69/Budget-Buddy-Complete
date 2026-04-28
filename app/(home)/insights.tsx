@@ -4,13 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { GlassCard } from '../../components/GlassCard';
 import { PolarChart, Pie } from 'victory-native';
-import { ChevronLeft, ChevronRight, TrendingUp, Sparkles, Search } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, TrendingUp, Sparkles, Search, Scissors, TrendingDown } from 'lucide-react-native';
 import { formatCurrency } from '../../utils/formatters';
 import { SkeletonLoader } from '../../components/SkeletonLoader';
 import { EmptyState } from '../../components/EmptyState';
 import { cn } from '../../utils/cn';
 import { WebCategoryChart } from '../../components/charts/WebCharts';
-import { InsightsMonthlyResponse, useApi } from '../../hooks/useApi';
+import { InsightsMonthlyResponse, InsightCard, useApi } from '../../hooks/useApi';
 
 const PALETTE = ['#10B981', '#38BDF8', '#F59E0B', '#EF4444', '#A855F7', '#F97316', '#14B8A6', '#EAB308'];
 
@@ -26,7 +26,6 @@ export default function Insights() {
   const loadInsights = useCallback(async () => {
     setIsInsightsLoading(true);
     setError('');
-    setInsights(null); // Clear previous insights
     try {
       const response = await api.getMonthlyInsights(monthString);
       setInsights(response.data);
@@ -44,17 +43,25 @@ export default function Insights() {
     }, [loadInsights])
   );
 
+  const today = new Date();
+  const maxDate = new Date(today.getFullYear(), today.getMonth(), 1);
+  const minDate = new Date(2025, 9, 1); // Oct 2025
+
   const shiftMonth = (delta: number) => {
     setCurrentDate(prev => {
-      const next = new Date(prev);
-      next.setMonth(prev.getMonth() + delta);
+      const next = new Date(prev.getFullYear(), prev.getMonth() + delta, 1);
+      if (next > maxDate) return prev;
+      if (next < minDate) return prev;
       return next;
     });
   };
 
+  const canGoPrev = currentDate > minDate;
+  const canGoNext = currentDate < maxDate;
+
   const chartData = (insights?.top_categories || []).map((item, index) => ({
     label: item.category,
-    value: item.amount,
+    value: Number(item.amount),
     color: PALETTE[index % PALETTE.length],
   }));
 
@@ -72,14 +79,28 @@ export default function Insights() {
 
         {/* Month Selector */}
         <View className="flex-row items-center justify-between px-6 mb-6">
-          <Pressable onPress={() => shiftMonth(-1)} className="p-2 bg-slate-900 rounded-full border border-slate-800">
-            <ChevronLeft size={20} color="#94A3B8" />
+          <Pressable 
+            onPress={() => canGoPrev && shiftMonth(-1)} 
+            disabled={!canGoPrev}
+            className={cn(
+              "p-2 rounded-full border border-slate-800",
+              canGoPrev ? "bg-slate-900" : "bg-slate-900/40 opacity-40"
+            )}
+          >
+            <ChevronLeft size={20} color={canGoPrev ? "#94A3B8" : "#475569"} />
           </Pressable>
           <Text className="text-white text-lg font-semibold">
             {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
           </Text>
-          <Pressable onPress={() => shiftMonth(1)} className="p-2 bg-slate-900 rounded-full border border-slate-800">
-            <ChevronRight size={20} color="#94A3B8" />
+          <Pressable 
+            onPress={() => canGoNext && shiftMonth(1)} 
+            disabled={!canGoNext}
+            className={cn(
+              "p-2 rounded-full border border-slate-800",
+              canGoNext ? "bg-slate-900" : "bg-slate-900/40 opacity-40"
+            )}
+          >
+            <ChevronRight size={20} color={canGoNext ? "#94A3B8" : "#475569"} />
           </Pressable>
         </View>
 
@@ -97,7 +118,7 @@ export default function Insights() {
             <View className="flex-row items-center justify-between">
               <View className="flex-1">
                 <Text className="text-slate-400 text-xs font-medium uppercase tracking-widest mb-2">Total Spend</Text>
-                {loading ? (
+                {(loading && !insights) ? (
                   <SkeletonLoader width={140} height={28} />
                 ) : (
                   <Text className="text-white text-3xl font-bold">{formatCurrency(totalSpending)}</Text>
@@ -105,7 +126,7 @@ export default function Insights() {
               </View>
             </View>
             <View className="flex-row items-center justify-between mt-4">
-               {loading ? (
+               {(loading && !insights) ? (
                  <SkeletonLoader width={120} height={24} borderRadius={12} />
                ) : (
                  <View className={cn(
@@ -134,7 +155,7 @@ export default function Insights() {
         <View className="items-center justify-center mb-8">
           <GlassCard className="w-[90%] p-6 items-center justify-center" intensity="medium">
             <View className="h-64 w-64 items-center justify-center">
-              {loading ? (
+              {(loading && !insights) ? (
                 <SkeletonLoader width={250} height={250} borderRadius={125} />
               ) : chartData.length > 0 ? (
                 Platform.OS === 'web' ? (
@@ -148,12 +169,13 @@ export default function Insights() {
                       labelKey="label"
                       valueKey="value"
                       colorKey="color"
+                      containerStyle={{ width: 250, height: 250 }}
                     >
                       <Pie.Chart innerRadius={80} />
                     </PolarChart>
-                    <View className="absolute items-center justify-center">
-                      <Text className="text-slate-400 text-xs font-medium uppercase tracking-widest">Spent</Text>
-                      <Text className="text-white text-2xl font-bold">{formatCurrency(totalSpending)}</Text>
+                    <View className="absolute items-center justify-center pointer-events-none">
+                      <Text className="text-slate-400 text-[10px] font-medium uppercase tracking-widest">Spent</Text>
+                      <Text className="text-white text-xl font-bold">{formatCurrency(totalSpending).split('.')[0]}</Text>
                     </View>
                   </View>
                 )
@@ -170,45 +192,80 @@ export default function Insights() {
           </GlassCard>
         </View>
 
-        {/* Spikes / Insights */}
-        <View className="px-6 mb-8 gap-3">
-           {loading ? (
-             <GlassCard className="p-5 flex-row border-slate-800/50" intensity="high">
-                <SkeletonLoader width={48} height={48} borderRadius={16} className="mr-4" />
-                <View className="flex-1">
-                   <SkeletonLoader width={100} height={16} className="mb-2" />
-                   <SkeletonLoader width={180} height={20} />
+        {/* New Insight Cards (Includes Spotlight & Positive Trends) */}
+        <View className="px-6 mb-8 gap-4">
+          {(loading && !insights) ? (
+             <GlassCard className="p-5 border-slate-800/50" intensity="high">
+                <View className="flex-row items-center">
+                    <SkeletonLoader width={48} height={48} borderRadius={16} className="mr-4" />
+                    <View className="flex-1">
+                       <SkeletonLoader width={100} height={16} className="mb-2" />
+                       <SkeletonLoader width={180} height={20} />
+                    </View>
                 </View>
              </GlassCard>
-           ) : insights?.spikes && insights?.spikes.length > 0 ? (
-              insights.spikes.map((spike, idx) => (
-                <GlassCard key={`spike-${idx}`} className="p-5 flex-row items-center border-slate-800/50" intensity="high">
-                  <View className="w-12 h-12 rounded-2xl items-center justify-center mr-4 bg-rose-500/15">
-                    <TrendingUp size={22} color="#F43F5E" />
-                  </View>
-                  <View className="flex-1 mr-4">
-                    <Text className="text-rose-400 text-xs font-medium uppercase tracking-widest">Spending Spike</Text>
-                    <Text className="text-white text-base font-bold mt-1">{spike.category} grew by {formatCurrency(spike.increase)}</Text>
-                    <Text className="text-slate-500 text-xs mt-2">Significantly higher than your previous month.</Text>
-                  </View>
-                </GlassCard>
-              ))
-           ) : (!loading && chartData.length > 0) ? (
+           ) : (insights?.insight_cards && insights.insight_cards.length > 0) ? (
+              insights.insight_cards.map((card: InsightCard, idx: number) => {
+                const isSpotlight = card.kind === 'spotlight';
+                const isSuccess = card.tone === 'success';
+                const isWarning = card.tone === 'warning' || card.kind === 'spike';
+                
+                return (
+                  <GlassCard 
+                    key={card.id || `card-${idx}`} 
+                    className={cn(
+                      "p-5 border-slate-800/50",
+                      isSpotlight ? "bg-primary/10 border-primary/30" : ""
+                    )} 
+                    intensity={isSpotlight ? "high" : "medium"}
+                  >
+                    <View className="flex-row items-center">
+                      <View className={cn(
+                        "w-12 h-12 rounded-2xl items-center justify-center mr-4",
+                        isSuccess || card.kind === 'opportunity' ? "bg-emerald-500/15" : 
+                        (card.kind === 'reduction' ? "bg-amber-500/15" : 
+                        (isWarning ? "bg-rose-500/15" : "bg-blue-500/15"))
+                      )}>
+                        {isSpotlight || card.kind === 'opportunity' ? (
+                           <Sparkles size={22} color={isSpotlight ? "#38BDF8" : "#10B981"} />
+                        ) : card.kind === 'reduction' ? (
+                           <Scissors size={22} color="#F59E0B" />
+                        ) : isSuccess ? (
+                           <TrendingUp size={22} color="#10B981" />
+                        ) : (
+                           <TrendingUp size={22} color="#F43F5E" />
+                        )}
+                      </View>
+                      <View className="flex-1">
+                        <Text className={cn(
+                          "text-xs font-medium uppercase tracking-widest",
+                          isSuccess || card.kind === 'opportunity' ? "text-emerald-400" : 
+                          (card.kind === 'reduction' ? "text-amber-400" : 
+                          (isWarning ? "text-rose-400" : "text-blue-400"))
+                        )}>{card.title}</Text>
+                        <Text className="text-white text-base font-bold mt-1">{card.message}</Text>
+                        {card.footer ? <Text className="text-slate-500 text-xs mt-2">{card.footer}</Text> : null}
+                      </View>
+                    </View>
+                  </GlassCard>
+                );
+              })
+           ) : (!loading || insights) && chartData.length > 0 ? (
              <GlassCard className="p-5 flex-row items-center border-slate-800/50" intensity="high">
                 <View className="w-12 h-12 rounded-2xl items-center justify-center mr-4 bg-emerald-500/15">
                   <Sparkles size={22} color="#10B981" />
                 </View>
                 <View className="flex-1">
                   <Text className="text-emerald-400 text-xs font-medium uppercase tracking-widest">Looking Good</Text>
-                  <Text className="text-white text-base font-bold mt-1">No Spending Spikes</Text>
-                  <Text className="text-slate-500 text-xs mt-2">Your spending is consistent with last month.</Text>
+                  <Text className="text-white text-base font-bold mt-1">Daily Flow Consistent</Text>
+                  <Text className="text-slate-500 text-xs mt-2">No unusual spending patterns detected.</Text>
                 </View>
              </GlassCard>
            ) : null}
         </View>
 
         {/* Category Breakdown */}
-        {(!loading && chartData.length > 0) && (
+        {((!loading || insights) && chartData.length > 0) && (
           <View className="px-6 mb-24">
             <Text className="text-white text-lg font-bold mb-4">Breakdown</Text>
             <View className="gap-3">

@@ -10,7 +10,7 @@ from django.utils import timezone as django_timezone
 from rest_framework import viewsets, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from .models import (
     User, Account, Category, Transaction, Budget, 
@@ -106,26 +106,88 @@ def _build_insight_cards(
     highest_expense,
     budget_alert,
     peak_day,
+    breakdown,
 ):
     cards = []
     period_label = _period_label(period)
     delta_amount = summary['deltaAmount']
     delta_pct = summary['deltaPct']
+    total_spend = summary.get('totalSpend', 0)
 
-    if delta_pct is not None:
+    # 1. Spotlight Summary (Premium feature for overall feel)
+    if total_spend > 0:
+        budget_limit = summary.get('budgetLimit', 1000) # Fallback limit
+        status = "On Track"
+        if total_spend > budget_limit:
+            status = "Over Budget"
+        elif total_spend < budget_limit * 0.8:
+            status = "Under Budget (Excellent)"
+            
+        cards.append({
+            'id': 'spotlight',
+            'kind': 'spotlight',
+            'title': 'Overall Summary',
+            'message': f"You've spent ${total_spend:.2f} this month. Status: {status}.",
+            'tone': 'info' if status == "On Track" else ('success' if "Excellent" in status else 'warning'),
+            'amount': total_spend,
+            'footer': f"Current monthly budget limit: ${budget_limit:.0f}",
+        })
+
+    # 2. Reduction Suggestion (Discretionary spending check)
+    discretionary_cats = ['food', 'dining', 'shopping', 'entertainment', 'lifestyle']
+    reduction_candidates = [
+        item for item in breakdown 
+        if any(cat in item['categoryName'].lower() for cat in discretionary_cats) 
+        and item['percentage'] > 20
+    ]
+    if reduction_candidates:
+        worst = max(reduction_candidates, key=lambda x: x['percentage'])
+        cards.append({
+            'id': 'reduction-tip',
+            'kind': 'reduction',
+            'title': 'Trimming Opportunity',
+            'message': f"You're spending {worst['percentage']:.0f}% on {worst['categoryName']}. Small adjustments here could save you ${worst['amount']*0.15:.0f} next month.",
+            'tone': 'warning',
+            'amount': worst['amount'] * 0.15, 
+            'footer': "Target: 15% reduction",
+        })
+
+    # 3. Potential to spend more (Spending Buffer)
+    budget_limit = summary.get('budgetLimit', 1000)
+    if total_spend < budget_limit * 0.7:
+        buffer = budget_limit - total_spend
+        cards.append({
+            'id': 'spending-buffer',
+            'kind': 'opportunity',
+            'title': 'Spending Buffer',
+            'message': f"You have a ${buffer:.0f} buffer remaining this month. Perfect for a well-deserved treat or self-care.",
+            'tone': 'success',
+            'amount': buffer,
+            'footer': "Safe to spend more",
+        })
+
+    # 4. Spending Change Insight (Positive/Negative)
+    if delta_pct is not None and summary.get('previousSpend', 0) > 0:
         direction = 'more' if delta_amount > 0 else 'less'
+        tone = _tone_for_delta(delta_amount)
+        
+        message = f"Spent {abs(delta_pct):.0f}% {direction} than last {period_label}."
+        if delta_amount < 0:
+            message = f"Great work! You spent {abs(delta_pct):.0f}% less than last {period_label}."
+            
         cards.append({
             'id': 'spend-change',
             'kind': 'spend_change',
-            'title': 'Spending Change',
-            'message': f"Spent {abs(delta_pct):.0f}% {direction} than last {period_label}.",
-            'tone': _tone_for_delta(delta_amount),
+            'title': 'Monthly Progress',
+            'message': message,
+            'tone': tone,
             'amount': abs(delta_amount),
             'footer': f"{summary['transactionCount']} expenses this {period_label}",
         })
 
+    # 5. Top Category Insight
     if top_category:
-        if top_category['changePct'] is not None:
+        if top_category['changePct'] is not None and summary.get('previousSpend', 0) > 0:
             footer = f"{top_category['changePct']:+.0f}% vs last {period_label}"
         else:
             footer = f"{top_category['transactionCount']} transactions"
@@ -139,47 +201,7 @@ def _build_insight_cards(
             'footer': footer,
         })
 
-    if period == 'month' and budget_alert:
-        progress_pct = budget_alert['budgetProgress'] * 100
-        remaining = budget_alert['budgetLimit'] - budget_alert['budgetSpent']
-        cards.append({
-            'id': 'budget-watch',
-            'kind': 'budget_watch',
-            'title': 'Budget Watch',
-            'message': f"{budget_alert['categoryName']} is at {progress_pct:.0f}% of its monthly budget.",
-            'tone': 'danger' if budget_alert['budgetProgress'] >= 1 else 'warning',
-            'amount': budget_alert['budgetSpent'],
-            'footer': (
-                f"Over by {abs(remaining):.2f}"
-                if remaining < 0
-                else f"{remaining:.2f} remaining"
-            ),
-        })
-
-    if highest_expense:
-        label = highest_expense['note'] or highest_expense['categoryName']
-        cards.append({
-            'id': 'largest-expense',
-            'kind': 'largest_transaction',
-            'title': 'Largest Expense',
-            'message': label,
-            'tone': 'danger' if highest_expense['amount'] >= max(summary['averageExpense'] * 1.75, 1) else 'neutral',
-            'amount': highest_expense['amount'],
-            'footer': highest_expense['occurredAt'][:10],
-        })
-
-    if peak_day:
-        cards.append({
-            'id': 'peak-day',
-            'kind': 'activity_day',
-            'title': 'Peak Spend Day',
-            'message': f"Most spending landed on {peak_day['label']}.",
-            'tone': 'neutral',
-            'amount': peak_day['amount'],
-            'footer': f"{peak_day['count']} expenses",
-        })
-
-    return cards[:4]
+    return cards[:6]
 
 
 # ---------------------------------------------------------------------------
@@ -373,6 +395,7 @@ class InsightsSummaryView(APIView):
             highest_expense=highest_expense,
             budget_alert=budget_alert,
             peak_day=peak_day,
+            breakdown=breakdown,
         )
 
         # Add ML driven cards
@@ -418,7 +441,7 @@ class InsightsSummaryView(APIView):
 
 class SyncUserView(APIView):
     authentication_classes = []
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def _decode_token(self, request):
         auth_header = request.META.get('HTTP_AUTHORIZATION', '')
@@ -537,12 +560,9 @@ class AccountViewSet(viewsets.ViewSet):
         account = Account.objects.filter(id=pk, user=request.user.db_user).first()
         if not account:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        serializer = AccountSerializer(data=request.data)
+        serializer = AccountSerializer(account, data=request.data, partial=True)
         if serializer.is_valid():
-            account.name = serializer.validated_data['name']
-            account.type = serializer.validated_data['type']
-            account.balance = serializer.validated_data.get('balance', account.balance)
-            account.save()
+            serializer.save()
             return Response(AccountSerializer(account).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -599,12 +619,9 @@ class CategoryViewSet(viewsets.ViewSet):
         category = Category.objects.filter(id=pk, user=request.user.db_user).first()
         if not category:
             return Response({'error': 'Category not found or read-only'}, status=status.HTTP_404_NOT_FOUND)
-        serializer = CategorySerializer(data=request.data)
+        serializer = CategorySerializer(category, data=request.data, partial=True)
         if serializer.is_valid():
-            category.name = serializer.validated_data['name']
-            category.icon = serializer.validated_data.get('icon')
-            category.color = serializer.validated_data.get('color')
-            category.save()
+            serializer.save()
             return Response(CategorySerializer(category).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -641,11 +658,23 @@ class TransactionViewSet(viewsets.ViewSet):
             ).filter(Q(user=user) | Q(user__isnull=True)).first()
             if cat:
                 return cat
-            # Create a user category on the fly
+            const_map = {
+                'Food': 'fork.knife',
+                'Dining': 'fork.knife',
+                'Shopping': 'bag.fill',
+                'Transport': 'bus.fill',
+                'Entertainment': 'tv.fill',
+                'Utilities': 'bolt.fill',
+                'Health': 'heart.fill',
+                'Education': 'book.fill',
+                'Bills': 'doc.text.fill',
+                'Subscriptions': 'creditcard.fill',
+                'Travel': 'airplane',
+            }
             return Category.objects.create(
                 user=user,
                 name=category_name,
-                icon='tag.fill',
+                icon=const_map.get(category_name, 'tag.fill'),
                 color='#38BDF8',
             )
 
@@ -758,7 +787,7 @@ class TransactionViewSet(viewsets.ViewSet):
         if 'description' in data and 'note' not in data:
             data['note'] = data.pop('description')
 
-        serializer = TransactionSerializer(data=data, partial=True)
+        serializer = TransactionSerializer(tx, data=data, partial=True)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -873,13 +902,9 @@ class BudgetViewSet(viewsets.ViewSet):
         budget = Budget.objects.filter(id=pk, user=request.user.db_user).first()
         if not budget:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        serializer = BudgetSerializer(data=request.data)
+        serializer = BudgetSerializer(budget, data=request.data, partial=True)
         if serializer.is_valid():
-            vd = serializer.validated_data
-            budget.category_id = vd['category_id']
-            budget.month = vd['month']
-            budget.limit = vd['limit']
-            budget.save()
+            serializer.save()
             return Response(BudgetSerializer(budget).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -954,18 +979,20 @@ class UploadStatementView(APIView):
             
             # Improved column discovery with exclusion
             def find_col(keywords, exclude=None):
-                for h in headers:
-                    if h in (exclude or []): continue
-                    if any(kw in h for kw in keywords):
-                        return h
+                # Iterate keywords first to respect priority
+                for kw in keywords:
+                    for h in headers:
+                        if h in (exclude or []): continue
+                        if kw in h:
+                            return h
                 return None
 
             # Priority for date: must have 'date' or 'time'
             date_col_slug = find_col(['date', 'time', 'value dt'])
             # Priority for amount: must have 'amount', 'debit', 'credit', 'withdraw', 'deposit'
             amt_col_slug = find_col(['amount', 'debit', 'credit', 'withdraw', 'deposit'], exclude=[date_col_slug])
-            # Description: anything related to desc, narration, particular, counterparty, details
-            desc_col_slug = find_col(['desc', 'narration', 'remark', 'counterparty', 'particular', 'details'], exclude=[date_col_slug, amt_col_slug])
+            # Description: prioritized discovery
+            desc_col_slug = find_col(['desc', 'narration', 'particular', 'details', 'receiver', 'remark', 'counterparty', 'reference', 'sender'], exclude=[date_col_slug, amt_col_slug])
             
             if not date_col_slug or not desc_col_slug or not amt_col_slug:
                 return Response({'error': f'Could not identify necessary columns (Date, Description, Amount). Found: {headers}'}, status=status.HTTP_400_BAD_REQUEST)
@@ -983,9 +1010,15 @@ class UploadStatementView(APIView):
                 if not any(row.values()):
                     continue
 
+                type_col_slug = find_col(['type', 'dr/cr', 'debit/credit', 'cr/dr', 'mode', 'tran type'], exclude=[date_col_slug, amt_col_slug, desc_col_slug])
+                type_col_exact = None
+                if type_col_slug:
+                    type_col_exact = original_headers[headers.index(type_col_slug)]
+
                 raw_desc = (row.get(desc_col_exact) or '').strip()
                 raw_amt = (row.get(amt_col_exact) or '0').strip()
                 raw_date = (row.get(d_col_exact) or '').strip()
+                raw_type = (row.get(type_col_exact) or '').strip().upper() if type_col_exact else ''
                 
                 if not raw_desc or not raw_date:
                     continue
@@ -1002,37 +1035,42 @@ class UploadStatementView(APIView):
                 # parse date
                 try:
                     from dateutil.parser import parse
-                    dt = parse(raw_date, fuzzy=True)
+                    dt = parse(raw_date, fuzzy=True, dayfirst=True)
                     dt = django_timezone.make_aware(dt) if django_timezone.is_naive(dt) else dt
                 except Exception:
                     continue # Skip rows with invalid dates instead of defaulting to now
                     
-                pred = predict_category(raw_desc, amount)
+                hour = dt.hour
+                day_name = dt.strftime('%A')
+                pred = predict_category(raw_desc, amount, hour=hour, day_of_week=day_name)
                 cat = pred['predicted_category'] if pred and 'predicted_category' in pred else None
                 conf = pred['confidence'] if pred and 'confidence' in pred else None
                 
-                records.append(MLTrainingRow(
+                # Determine income vs expense
+                # Logic: If raw_type is CR/CREDIT, it's income. If DR/DEBIT, it's expense.
+                is_income = False
+                if 'CR' in raw_type or 'CREDIT' in raw_type:
+                    is_income = True
+                elif 'DR' in raw_type or 'DEBIT' in raw_type:
+                    is_income = False
+                else:
+                    is_income = amount < 0
+                
+                # We normalize amount for MLRow but keep the 'is_income' for Transaction
+                # Some models might expect negative for expenses, but let's stick to our DB pattern
+                ml_row = MLTrainingRow(
                     user=user,
                     occurredAt=dt,
-                    amount=amount,
+                    amount=amount, # Store raw amount in ML Row
                     descriptionRaw=raw_desc,
                     predictedCategory=cat,
                     confidence=conf
-                ))
-            
-            if records:
-                MLTrainingRow.objects.bulk_create(records, batch_size=500)
-                
-            return Response({'success': True, 'processed': len(records)})
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-                    amount=amount,
-                    descriptionRaw=raw_desc,
-                    predictedCategory=cat,
-                    confidence=conf
-                ))
+                )
+                # Keep a reference or just store data for secondary objects
+                # We'll use a custom attr to pass 'is_income' through
+                ml_row._is_income = is_income
+                records.append(ml_row)
+
             
             if records:
                 with django_transaction.atomic():
@@ -1042,6 +1080,13 @@ class UploadStatementView(APIView):
                     # Also tentatively create actual Transaction objects for the dashboard
                     # We need an account to link them to.
                     account = Account.objects.filter(user=user).first()
+                    if not account:
+                        account = Account.objects.create(
+                            user=user,
+                            name='Primary Account',
+                            type='bank',
+                            balance=0.0
+                        )
                     if account:
                         tx_objects = []
                         total_delta = 0
@@ -1062,25 +1107,139 @@ class UploadStatementView(APIView):
                             if not category:
                                 category = default_cat
 
+                            is_income = getattr(rec, '_is_income', False)
+                                
                             tx_objects.append(Transaction(
                                 user=user,
                                 account=account,
                                 category=category,
-                                type='expense' if rec.amount > 0 else 'income', # Assuming expenses are positive in CSV
+                                type='income' if is_income else 'expense',
                                 amount=abs(rec.amount),
                                 note=rec.descriptionRaw,
                                 occurredAt=rec.occurredAt
                             ))
-                            total_delta += (-abs(rec.amount) if rec.amount > 0 else abs(rec.amount))
+                            total_delta += (abs(rec.amount) if is_income else -abs(rec.amount))
                         
                         if tx_objects:
                             Transaction.objects.bulk_create(tx_objects, batch_size=500)
                             # Update account balance
                             account.balance += total_delta
                             account.save()
+            
+            try:
+                from django.core.cache import cache
+                # We need to clear the insights cache for this user.
+                # Since we don't know exactly which months were updated easily without iterating,
+                # we can clear all keys starting with insights_{user.id}_
+                # However, for simplicity and performance in a dev env, let's just clear the current and last few months
+                # or better yet, identify the unique months from the records.
+                affected_months = set(r.occurredAt.strftime('%Y-%m') for r in records)
+                for m in affected_months:
+                    cache.delete(f"insights_{user.id}_{m}")
                 
+                from api.services.behavior_engine import BehaviorEngine
+                engine = BehaviorEngine(user)
+                engine.run_full_analysis()
+                # Still try backgrounding the alert generation just in case
+                from api.tasks.behavior_tasks import generate_alerts
+                try:
+                    generate_alerts.delay(user.id)
+                except Exception:
+                    # Fallback to sync alerts if celery is missing
+                    generate_alerts(user.id)
+            except Exception as e:
+                print(f"Failed to trigger behavior engine synchronously or clear cache: {e}")
+
             return Response({'success': True, 'processed': len(records)})
         except Exception as e:
             import traceback
             traceback.print_exc()
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+from .serializers import (
+    UserBehaviorProfileSerializer, PredictionCacheSerializer, AlertSerializer
+)
+from .models import UserBehaviorProfile, PredictionCache, Alert
+
+class BehaviorProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user.db_user
+        profile = getattr(user, 'behavior_profile', None)
+        if not profile:
+            return Response({'message': 'Profile not ready'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = UserBehaviorProfileSerializer(profile)
+        return Response(serializer.data)
+
+
+class ForecastView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user.db_user
+        prediction = PredictionCache.objects.filter(user=user).order_by('-created_at').first()
+        if not prediction:
+            return Response({'message': 'Forecast not ready'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = PredictionCacheSerializer(prediction)
+        return Response(serializer.data)
+
+
+class AlertsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user.db_user
+        alerts = Alert.objects.filter(user=user, is_read=False).order_by('-created_at')
+        serializer = AlertSerializer(alerts, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        # Mark alerts as read
+        alert_ids = request.data.get('alert_ids', [])
+        user = request.user.db_user
+        Alert.objects.filter(user=user, id__in=alert_ids).update(is_read=True)
+        return Response({'success': True})
+
+
+class SimulateSavingsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user.db_user
+        cutback_amount = float(request.data.get('cutback_amount', 0))
+        
+        # Super simple simulation: if I cut back X daily, how does runout date change?
+        profile = getattr(user, 'behavior_profile', None)
+        if not profile or not profile.average_monthly_burn:
+            return Response({'error': 'Insufficient data to simulate'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        current_daily_burn = float(profile.average_monthly_burn) / 30.0
+        new_daily_burn = max(0.1, current_daily_burn - (cutback_amount / 30.0))
+        
+        # Project 30 days
+        import json
+        prediction = PredictionCache.objects.filter(user=user).order_by('-created_at').first()
+        
+        if not prediction:
+            return Response({'error': 'Forecast not ready'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Naive approach: we just push up the values in trajectory data
+        original_trajectory = prediction.trajectory_data if isinstance(prediction.trajectory_data, list) else json.loads(prediction.trajectory_data)
+        
+        simulated_trajectory = []
+        cumm_savings = 0
+        for pt in original_trajectory:
+            cumm_savings += (current_daily_burn - new_daily_burn)
+            simulated_trajectory.append({
+                'date': pt['date'],
+                'predicted_balance': round(float(pt['predicted_balance']) + cumm_savings, 2)
+            })
+
+        return Response({
+            'original_burn': round(current_daily_burn * 30, 2),
+            'new_burn': round(new_daily_burn * 30, 2),
+            'simulated_trajectory': simulated_trajectory
+        })
+

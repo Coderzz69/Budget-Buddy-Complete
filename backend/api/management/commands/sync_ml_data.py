@@ -6,7 +6,8 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from api.models import (
     User, Account, Category, Transaction, 
-    NormalizedMerchant, ModelPrediction, RecurringPattern, InsightSnapshot
+    NormalizedMerchant, ModelPrediction, RecurringPattern, InsightSnapshot,
+    MLTrainingRow
 )
 
 class Command(BaseCommand):
@@ -30,10 +31,10 @@ class Command(BaseCommand):
             defaults={'type': 'bank', 'balance': 50000.0}
         )
 
-        base_path = '/home/sanathcoonani/Desktop/Budget_Buddy_app/bb_ML/outputs'
+        base_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))), 'bb_ML/outputs')
         
         # 2. Sync Transactions and Predictions
-        csv_file = os.path.join(base_path, 'behavior_event_view.csv')
+        csv_file = os.path.join(base_path, 'behavior_event_view_predicted.csv')
         if os.path.exists(csv_file):
             self.stdout.write("Syncing transactions from behavior_event_view.csv...")
             with open(csv_file, mode='r', encoding='utf-8') as f:
@@ -65,15 +66,16 @@ class Command(BaseCommand):
                         occurredAt=occurred_at
                     )
 
-                    # Create Prediction if ML sourced
-                    if row.get('category_label_source') == 'merchant_map':
-                        ModelPrediction.objects.create(
-                            transaction=tx,
-                            modelName='NaiveBayesCategoryClassifier',
-                            prediction=category_name,
-                            confidence=0.9, # Placeholder
-                            metadata={'source': 'merchant_map'}
-                        )
+                    
+                    # 2b. Create MLTrainingRow for Insights Engine
+                    MLTrainingRow.objects.create(
+                        user=user,
+                        occurredAt=occurred_at,
+                        amount=amount,
+                        descriptionRaw=row['counterparty_raw'],
+                        predictedCategory=category_name,
+                        confidence=0.9
+                    )
                     
                     count += 1
                 self.stdout.write(self.style.SUCCESS(f"Successfully imported {count} transactions."))
@@ -93,11 +95,11 @@ class Command(BaseCommand):
                     RecurringPattern.objects.create(
                         user=user,
                         merchantName=row['counterparty_normalized'],
-                        frequency=row['recurring_frequency'],
-                        amount=float(row['expected_amount_min_inr']),
+                        frequency=row['recurring_frequency'].lower(),
+                        expected_amount=float(row['expected_amount_min_inr']),
                         lastOccurredAt=last_seen,
-                        nextExpectedAt=next_expected,
-                        confidence=float(row['confidence']),
+                        next_due_date=next_expected,
+                        confidence_score=float(row['confidence']),
                         isActive=True
                     )
             self.stdout.write(self.style.SUCCESS("Recurring patterns synced."))

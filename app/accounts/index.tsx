@@ -48,20 +48,25 @@ export default function Accounts() {
           ) : (
             <View className="gap-4">
               {accounts.map((account) => (
-                <GlassCard key={account.id} className="p-5">
-                  <View className="flex-row items-center justify-between">
-                    <View className="flex-row items-center">
-                      <View className="w-12 h-12 rounded-2xl bg-slate-900 items-center justify-center mr-4">
-                        {getAccountIcon(account.type)}
+                <Pressable
+                  key={account.id}
+                  onPress={() => router.push(`/accounts/${account.id}`)}
+                >
+                  <GlassCard className="p-5">
+                    <View className="flex-row items-center justify-between">
+                      <View className="flex-row items-center">
+                        <View className="w-12 h-12 rounded-2xl bg-slate-900 items-center justify-center mr-4">
+                          {getAccountIcon(account.type)}
+                        </View>
+                        <View>
+                          <Text className="text-white font-bold">{account.name}</Text>
+                          <Text className="text-slate-400 text-xs uppercase tracking-widest">{account.type}</Text>
+                        </View>
                       </View>
-                      <View>
-                        <Text className="text-white font-bold">{account.name}</Text>
-                        <Text className="text-slate-400 text-xs uppercase tracking-widest">{account.type}</Text>
-                      </View>
+                      <Text className="text-white font-bold">{formatCurrency(account.balance)}</Text>
                     </View>
-                    <Text className="text-white font-bold">{formatCurrency(account.balance)}</Text>
-                  </View>
-                </GlassCard>
+                  </GlassCard>
+                </Pressable>
               ))}
             </View>
           )}

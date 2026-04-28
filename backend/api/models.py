@@ -102,6 +102,10 @@ class Transaction(models.Model):
     note = models.TextField(blank=True, null=True)
     occurredAt = models.DateTimeField(db_column='occurredAt')
     createdAt = models.DateTimeField(auto_now_add=True, db_column='createdAt')
+    
+    # ML & Behavior Engine Flags
+    is_recurring = models.BooleanField(default=False, db_index=True)
+    is_anomaly = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'Transaction'
@@ -109,6 +113,8 @@ class Transaction(models.Model):
             models.Index(fields=['user'], name='tx_user_idx'),
             models.Index(fields=['occurredAt'], name='tx_occurred_idx'),
             models.Index(fields=['account'], name='tx_account_idx'),
+            models.Index(fields=['user', 'occurredAt'], name='tx_usr_occ_idx'),
+            models.Index(fields=['user', 'is_recurring'], name='tx_usr_rec_idx'),
         ]
         ordering = ['-occurredAt']
 
@@ -190,18 +196,22 @@ class ModelPrediction(models.Model):
 
 class RecurringPattern(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='recurring_patterns', db_column='userId')
-    merchantName = models.CharField(max_length=255, db_column='merchantName')
-    frequency = models.CharField(max_length=50)
-    amount = models.FloatField()
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='subscriptions', db_column='userId')
+    merchantName = models.CharField(max_length=255, db_column='merchantName', db_index=True)
+    
+    expected_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
+    frequency = models.CharField(max_length=50, choices=[('weekly', 'Weekly'), ('monthly', 'Monthly'), ('annual', 'Annual')], default='monthly')
+    
     lastOccurredAt = models.DateTimeField(db_column='lastOccurredAt')
-    nextExpectedAt = models.DateTimeField(db_column='nextExpectedAt')
-    confidence = models.FloatField()
+    next_due_date = models.DateField(db_column='nextExpectedAt', db_index=True)
+    
+    confidence_score = models.FloatField()
     isActive = models.BooleanField(default=True, db_column='isActive')
     createdAt = models.DateTimeField(auto_now_add=True, db_column='createdAt')
 
     class Meta:
         db_table = 'RecurringPattern'
+        unique_together = ('user', 'merchantName')
 
 
 class InsightSnapshot(models.Model):
@@ -237,3 +247,67 @@ class MLTrainingRow(models.Model):
         indexes = [
             models.Index(fields=['user'], name='ml_training_user_idx'),
         ]
+
+class UserBehaviorProfile(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='behavior_profile', db_column='userId')
+    
+    average_monthly_burn = models.DecimalField(max_digits=12, decimal_places=2, default=0.0)
+    weekend_overspend_ratio = models.FloatField(default=1.0)
+    salary_credit_date_expected = models.PositiveSmallIntegerField(null=True, blank=True)
+    savings_consistency_score = models.FloatField(default=0.0)
+    
+    last_computed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'UserBehaviorProfile'
+
+class Alert(models.Model):
+    ALERT_TYPES = [
+        ('low_balance', 'Low Balance Prediction'),
+        ('unusual_spend', 'Unusual Spend Detected'),
+        ('weekend_warning', 'Weekend Overspend Warning'),
+        ('subscription_due', 'Subscription Due Soon')
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='alerts', db_column='userId')
+    alert_type = models.CharField(max_length=30, choices=ALERT_TYPES)
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    
+    issued_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    metadata = models.JSONField(blank=True, null=True)
+
+    class Meta:
+        db_table = 'Alert'
+        ordering = ['-issued_at']
+
+class PredictionCache(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='predictions', db_column='userId')
+    model_version = models.CharField(max_length=50)
+    
+    trajectory_data = models.JSONField() 
+    predicted_runout_date = models.DateField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'PredictionCache'
+        indexes = [
+            models.Index(fields=['user', '-created_at'])
+        ]
+
+
+class ModelRun(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    job_name = models.CharField(max_length=100)
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=[('running', 'Running'), ('success', 'Success'), ('failed', 'Failed')])
+    users_processed = models.IntegerField(default=0)
+    error_logs = models.TextField(blank=True, null=True)
+
+    class Meta:
+        db_table = 'ModelRun'
