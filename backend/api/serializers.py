@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from .models import (
     User, Account, Category, Transaction, Budget,
-    InsightSnapshot, RecurringPattern, NormalizedMerchant, ModelPrediction
+    InsightSnapshot, RecurringPattern, NormalizedMerchant, ModelPrediction,
+    UserBehaviorProfile, PredictionCache, Alert
 )
 
 
@@ -23,6 +24,7 @@ class UserSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         ret = super().to_representation(instance)
         ret['id'] = str(instance.id)
+        ret['needsOnboarding'] = not instance.accounts.exists()
         return ret
 
 
@@ -116,6 +118,13 @@ class BudgetSerializer(serializers.ModelSerializer):
         fields = ['id', 'userId', 'categoryId', 'month', 'limit', 'createdAt']
         read_only_fields = ['id', 'userId', 'createdAt']
 
+    def to_internal_value(self, data):
+        # Support both 'categoryId' and 'category_id'
+        mutable = dict(data)
+        if 'category_id' in mutable and 'categoryId' not in mutable:
+            mutable['categoryId'] = mutable.pop('category_id')
+        return super().to_internal_value(mutable)
+
     def get_userId(self, obj):
         return str(obj.user_id)
 
@@ -147,4 +156,23 @@ class RecurringPatternSerializer(serializers.ModelSerializer):
         ret = super().to_representation(instance)
         ret['id'] = str(instance.id)
         ret['userId'] = str(instance.user_id)
+        ret['userId'] = str(instance.user_id)
         return ret
+
+
+class UserBehaviorProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserBehaviorProfile
+        fields = '__all__'
+
+
+class PredictionCacheSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PredictionCache
+        fields = '__all__'
+
+
+class AlertSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Alert
+        fields = '__all__'

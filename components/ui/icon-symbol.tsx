@@ -21,6 +21,23 @@ const MAPPING: Record<string, { icon: string, lib: 'material' | 'fa' }> = {
   'arrow.down': { icon: 'arrow-down', lib: 'fa' },
   'arrow.up': { icon: 'arrow-up', lib: 'fa' },
   'list.bullet.rectangle.fill': { icon: 'list-check', lib: 'fa' },
+  'bag.fill': { icon: 'bag-shopping', lib: 'fa' },
+  'ellipsis.circle.fill': { icon: 'ellipsis', lib: 'fa' },
+  'fork.knife': { icon: 'utensils', lib: 'fa' },
+  'airplane': { icon: 'plane', lib: 'fa' },
+  'doc.text.fill': { icon: 'file-lines', lib: 'fa' },
+  'play.circle.fill': { icon: 'circle-play', lib: 'fa' },
+  'shippingbox.fill': { icon: 'box', lib: 'fa' },
+  'play.tv.fill': { icon: 'tv', lib: 'fa' },
+  'cup.and.saucer.fill': { icon: 'mug-hot', lib: 'fa' },
+  'applelogo': { icon: 'apple', lib: 'fa' },
+  'creditcard.fill': { icon: 'credit-card', lib: 'fa' },
+  'shield.fill': { icon: 'shield-halved', lib: 'fa' },
+  'cart.badge.plus': { icon: 'cart-plus', lib: 'fa' },
+  'graduationcap.fill': { icon: 'graduation-cap', lib: 'fa' },
+  'leaf.fill': { icon: 'leaf', lib: 'fa' },
+  'wineglass.fill': { icon: 'glass-martini-alt', lib: 'fa' },
+  'fitness': { icon: 'dumbbell', lib: 'fa' },
 };
 
 export function IconSymbol({

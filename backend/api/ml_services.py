@@ -6,7 +6,7 @@ from pathlib import Path
 
 # Add bb_ML to python path if not there
 # ml_services.py -> api -> backend -> Budget-Buddy -> Budget_Buddy_app
-BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 BB_ML_DIR = BASE_DIR / "bb_ML"
 if str(BB_ML_DIR) not in sys.path:
     sys.path.append(str(BB_ML_DIR))
@@ -40,19 +40,18 @@ def get_classifier():
                 _classifier_model = NaiveBayesCategoryClassifier.from_dict(json.load(f))
     return _classifier_model
 
-def predict_category(note: str, amount: float):
+def predict_category(note: str, amount: float, hour: int = 12, day_of_week: str = "Monday"):
     model = get_classifier()
     if not model:
         return None
     
     # build a row dict simulating what the ML expects
-    # In a full flow we'd normalize counterparty using the real normalizer
     row = {
         "counterparty_normalized": note.upper().strip(), 
         "counterparty_raw": note,
         "amount_inr": str(amount),
-        "hour_of_day": "12", # default assumed
-        "day_of_week": "Monday",
+        "hour_of_day": str(hour), 
+        "day_of_week": day_of_week,
     }
     
     predictions = model.predict_proba(row, top_k=3)

@@ -1,0 +1,2 @@
+Date,Time,Amount,Type,Status,User,Description,Reference,Category,Bank,Account
+01/04/2026,10:00:00,1000.00,DR,SUCCESS,TESTER,TEST PURCHASE,REF001,PAY,HDFC,XXXX1234

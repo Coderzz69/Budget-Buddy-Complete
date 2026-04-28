@@ -2,11 +2,11 @@ import 'react-native-reanimated';
 import 'react-native-gesture-handler';
 import { ClerkProvider, useAuth, useUser } from '@clerk/expo'
 import { tokenCache } from '@clerk/expo/token-cache'
-import { Stack } from 'expo-router'
+import { Stack, useRouter, useSegments } from 'expo-router'
 import { useColorScheme, View, Text, StyleSheet } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import { syncUser } from '../utils/api';
 
@@ -47,17 +47,25 @@ function AppContent() {
   const colorScheme = useColorScheme();
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { user } = useUser();
+  const router = useRouter();
+  const segments = useSegments();
+
+  const hasSynced = useRef(false);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !user) {
+      hasSynced.current = false;
       return;
     }
 
+    if (hasSynced.current) return;
+
     const sync = async () => {
       try {
+        hasSynced.current = true;
         const token = await getToken();
         if (token) {
-          await syncUser(token, {
+          const result = await syncUser(token, {
             clerkId: user.id,
             email: user.primaryEmailAddress?.emailAddress,
             firstName: user.firstName || undefined,
@@ -65,14 +73,19 @@ function AppContent() {
             username: user.username || undefined,
           });
           console.log('User synced on app launch/auth change');
+          
+          if (result?.needsOnboarding && segments[0] !== 'complete-profile') {
+            router.replace('/complete-profile');
+          }
         }
       } catch (error) {
         console.error('Failed to sync user on launch:', error);
+        hasSynced.current = false; // Reset on error to allow retry
       }
     };
 
     sync();
-  }, [getToken, isLoaded, isSignedIn, user]);
+  }, [isLoaded, isSignedIn, user?.id]);
 
   return (
     <View style={styles.container}>
@@ -92,6 +105,7 @@ function AppContent() {
       >
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(home)" />
+        <Stack.Screen name="transactions/index" />
         <Stack.Screen name="transactions/add" options={{ presentation: 'modal' }} />
         <Stack.Screen name="accounts/index" />
         <Stack.Screen name="accounts/add" options={{ presentation: 'modal' }} />

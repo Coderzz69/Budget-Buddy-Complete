@@ -38,15 +38,20 @@ export default function Categories() {
           ) : (
             <View className="gap-3">
               {categories.map((cat) => (
-                <GlassCard key={cat.id} className="p-4 flex-row items-center">
-                  <View
-                    className="w-10 h-10 rounded-xl items-center justify-center mr-4"
-                    style={{ backgroundColor: cat.color || '#10B981' }}
-                  >
-                    <Text className="text-lg">{cat.icon || '🏷️'}</Text>
-                  </View>
-                  <Text className="text-white font-medium flex-1">{cat.name}</Text>
-                </GlassCard>
+                <Pressable
+                  key={cat.id}
+                  onPress={() => router.push(`/categories/${cat.id}`)}
+                >
+                  <GlassCard className="p-4 flex-row items-center">
+                    <View
+                      className="w-10 h-10 rounded-xl items-center justify-center mr-4"
+                      style={{ backgroundColor: cat.color || '#10B981' }}
+                    >
+                      <Text className="text-lg">{cat.icon || '🏷️'}</Text>
+                    </View>
+                    <Text className="text-white font-medium flex-1">{cat.name}</Text>
+                  </GlassCard>
+                </Pressable>
               ))}
             </View>
           )}

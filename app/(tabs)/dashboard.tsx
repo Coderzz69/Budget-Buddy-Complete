@@ -10,6 +10,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { dataService, Transaction } from '@/utils/dataService';
 import { GlassView } from '@/components/ui/GlassView';
+import { getTransactionIcon } from '@/utils/icons';
 
 const { width } = Dimensions.get('window');
 
@@ -103,7 +104,7 @@ export default function DashboardScreen() {
                 }]}>
                     <View style={[styles.iconContainer, { backgroundColor: isIncome ? 'rgba(74, 222, 128, 0.15)' : 'rgba(248, 113, 113, 0.15)' }]}>
                         <IconSymbol
-                            name={getIconName(item.category)}
+                            name={getTransactionIcon(item.category, item.description)}
                             size={28}
                             color={color}
                         />
@@ -131,7 +132,7 @@ export default function DashboardScreen() {
                         <View style={{ flexDirection: 'row', gap: 12 }}>
                             <TouchableOpacity
                                 style={[styles.iconButton, { backgroundColor: theme.background === '#020617' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
-                                onPress={() => router.push({ pathname: '/add', params: { id: item.id } })}
+                                onPress={() => router.push({ pathname: '/transactions/add', params: { id: item.id } })}
                             >
                                 <IconSymbol name="pencil" size={14} color={theme.text} />
                             </TouchableOpacity>
@@ -148,22 +149,6 @@ export default function DashboardScreen() {
         );
     };
 
-    // Helper to map categories to icons
-    const getIconName = (category: string): any => {
-        const map: Record<string, string> = {
-            'Salary': 'dollarsign.circle.fill',
-            'Income': 'dollarsign.circle.fill',
-            'Food': 'cart.fill',
-            'Shopping': 'cart.fill',
-            'Transport': 'car.fill',
-            'Entertainment': 'gamecontroller.fill',
-            'Utilities': 'bolt.fill',
-            'Health': 'heart.fill',
-            'Education': 'book.fill',
-            'Investment': 'chart.pie.fill',
-        };
-        return map[category] || 'creditcard';
-    };
 
     return (
         <ScrollView
@@ -232,7 +217,7 @@ export default function DashboardScreen() {
                 {/* Quick Actions - Glass Style */}
                 <View style={styles.actionRow}>
                     <Animated.View style={[styles.actionButton, { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: theme.background === '#020617' ? 0.2 : 0.08, shadowRadius: 4, elevation: theme.background === '#020617' ? 4 : 1, backgroundColor: theme.background === '#020617' ? '#020617' : '#F8FAFC' }]}>
-                        <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push('/add')}>
+                        <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push('/transactions/add')}>
                             <GlassView intensity={50} style={styles.actionGlass}>
                                 <LinearGradient colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.05)']} style={StyleSheet.absoluteFill} />
                                 <IconSymbol name="plus" size={28} color={theme.text} />

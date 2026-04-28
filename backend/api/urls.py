@@ -4,7 +4,8 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     SyncUserView, AccountViewSet, CategoryViewSet,
     TransactionViewSet, BudgetViewSet, DashboardView, UserProfileView,
-    InsightsSummaryView, MLSummaryView, MLCategorizeView, UploadStatementView
+    InsightsSummaryView, MLSummaryView, MLCategorizeView, UploadStatementView,
+    BehaviorProfileView, ForecastView, AlertsView, SimulateSavingsView
 )
 
 from .insights import InsightsEngineView
@@ -24,6 +25,13 @@ urlpatterns = [
     path('ml/summary/', MLSummaryView.as_view(), name='ml-summary'),
     path('ml/categorize/', MLCategorizeView.as_view(), name='ml-categorize'),
     path('ml/upload-statement/', UploadStatementView.as_view(), name='ml-upload-statement'),
+    
+    # Analytics / AI Behavior endpoints
+    path('analytics/behavior/', BehaviorProfileView.as_view(), name='behavior-profile'),
+    path('analytics/forecast/', ForecastView.as_view(), name='behavior-forecast'),
+    path('analytics/insights/', AlertsView.as_view(), name='behavior-alerts'),
+    path('simulate/savings/', SimulateSavingsView.as_view(), name='simulate-savings'),
+
     path('health/', lambda request: JsonResponse({'status': 'ok'}), name='health'),
     path('', include(router.urls)),
 ]

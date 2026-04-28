@@ -50,16 +50,21 @@ export default function TransactionsScreen() {
         const map: Record<string, string> = {
             'Salary': 'dollarsign.circle.fill',
             'Income': 'dollarsign.circle.fill',
-            'Food': 'cart.fill',
-            'Shopping': 'cart.fill',
-            'Transport': 'car.fill',
-            'Entertainment': 'gamecontroller.fill',
+            'Food': 'fork.knife',
+            'Dining': 'fork.knife',
+            'Shopping': 'bag.fill',
+            'Transport': 'bus.fill',
+            'Entertainment': 'tv.fill',
             'Utilities': 'bolt.fill',
             'Health': 'heart.fill',
             'Education': 'book.fill',
             'Investment': 'chart.pie.fill',
+            'Subscriptions': 'creditcard.fill',
+            'Bills': 'doc.text.fill',
+            'Travel': 'airplane',
+            'Amazon': 'bag.fill',
         };
-        return map[category] || 'creditcard';
+        return map[category] || 'tag.fill';
     };
 
     const handleDelete = async (id: string) => {

@@ -1,93 +1,58 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
-import { router } from 'expo-router';
-import { X, Calendar, Check, Info, Mic } from 'lucide-react-native';
-import { useStore, TransactionType } from '../../store/useStore';
-import { useApi } from '../../hooks/useApi';
+import React, { useState, useEffect } from 'react';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  Alert,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router, useLocalSearchParams } from 'expo-router';
+import { X, Trash2, Calendar, Check, Info } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
+
 import { GlassCard } from '../../components/GlassCard';
 import { NeonButton } from '../../components/NeonButton';
-import * as Haptics from 'expo-haptics';
-import { EmptyState } from '../../components/EmptyState';
 import { IconSymbol } from '../../components/ui/icon-symbol';
+import { useApi } from '../../hooks/useApi';
+import { useStore, TransactionType } from '../../store/useStore';
 
-export default function AddTransaction() {
-  const { accounts, categories, setTransactions, transactions, setAccounts, setDashboardSummary } = useStore();
+export default function EditTransaction() {
+  const { id } = useLocalSearchParams<{ id: string }>();
   const api = useApi();
+  const { transactions, setTransactions, accounts, categories, setAccounts, setDashboardSummary } = useStore();
 
-  const [type, setType] = useState<TransactionType>('expense');
-  const [amount, setAmount] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [selectedAccount, setSelectedAccount] = useState('');
-  const [note, setNote] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [isListening, setIsListening] = useState(false);
+  const transaction = transactions.find((t) => t.id === id);
+
+  const [type, setType] = useState<TransactionType>(transaction?.type || 'expense');
+  const [amount, setAmount] = useState(transaction?.amount.toString() || '');
+  const [selectedCategory, setSelectedCategory] = useState(transaction?.categoryId || '');
+  const [selectedAccount, setSelectedAccount] = useState(transaction?.accountId || '');
+  const [note, setNote] = useState(transaction?.note || '');
+  const [date, setDate] = useState(transaction?.occurredAt.split('T')[0] || new Date().toISOString().split('T')[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isPredicting, setIsPredicting] = useState(false);
+
+  useEffect(() => {
+    if (!transaction) {
+      router.back();
+    }
+  }, [transaction]);
+
+  if (!transaction) return null;
 
   const canSave = amount && !isNaN(parseFloat(amount)) && selectedCategory && selectedAccount;
 
-  // ML Smart Category Prediction
-  useEffect(() => {
-    if (!note || note.length < 3) return;
-
-    const timeoutId = setTimeout(async () => {
-      try {
-        setIsPredicting(true);
-        const parsedAmount = parseFloat(amount) || 0;
-        const res = await api.predictCategory(note, parsedAmount);
-        
-        if (res.data?.predicted_category && res.data.confidence && res.data.confidence > 0.3) {
-          const catName = res.data.predicted_category.toLowerCase();
-          const matchingCat = categories.find(c => c.name.toLowerCase() === catName);
-          
-          if (matchingCat && matchingCat.id !== selectedCategory) {
-            setSelectedCategory(matchingCat.id);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          }
-        }
-      } catch (e) {
-        console.warn('ML Prediction failed:', e);
-      } finally {
-        setIsPredicting(false);
-      }
-    }, 800);
-
-    return () => clearTimeout(timeoutId);
-  }, [note, amount, categories]);
-
-  useEffect(() => {
-    if (!selectedCategory && categories.length > 0) {
-      setSelectedCategory(categories[0].id);
-    }
-  }, [categories, selectedCategory]);
-
-  useEffect(() => {
-    if (!selectedAccount && accounts.length > 0) {
-      setSelectedAccount(accounts[0].id);
-    }
-  }, [accounts, selectedAccount]);
-
-  const handleVoiceInput = async () => {
-    setIsListening(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    setTimeout(() => {
-      setIsListening(false);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setAmount('50.00');
-      setNote('Dinner tonight');
-      const foodCategory = categories.find(c => c.name.toLowerCase().includes('food') || c.name.toLowerCase().includes('dinner'));
-      if (foodCategory) setSelectedCategory(foodCategory.id);
-    }, 2000);
-  };
-
-  const handleSave = async () => {
+  const handleUpdate = async () => {
     const parsedAmount = parseFloat(amount);
     if (!canSave || isSubmitting) return;
 
     try {
       setIsSubmitting(true);
-      const response = await api.createTransaction({
+      const response = await api.updateTransaction(transaction.id, {
         amount: parsedAmount,
         type,
         accountId: selectedAccount,
@@ -96,7 +61,7 @@ export default function AddTransaction() {
         note: note || undefined,
       });
 
-      setTransactions([response.data, ...transactions]);
+      setTransactions(transactions.map((t) => (t.id === transaction.id ? response.data : t)));
       
       const [accountsResponse, summaryResponse] = await Promise.all([
         api.getAccounts(),
@@ -108,10 +73,44 @@ export default function AddTransaction() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch (error) {
-      console.error('Failed to save transaction:', error);
+      Alert.alert('Error', 'Failed to update transaction');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Transaction',
+      'Are you sure you want to delete this transaction?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setIsSubmitting(true);
+              await api.deleteTransaction(transaction.id);
+              setTransactions(transactions.filter((t) => t.id !== transaction.id));
+              
+              const [accountsResponse, summaryResponse] = await Promise.all([
+                api.getAccounts(),
+                api.getDashboardSummary(),
+              ]);
+              setAccounts(accountsResponse.data);
+              setDashboardSummary(summaryResponse.data);
+              
+              router.back();
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete transaction');
+            } finally {
+              setIsSubmitting(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -120,8 +119,9 @@ export default function AddTransaction() {
       className="flex-1 bg-slate-950"
     >
       <ScrollView showsVerticalScrollIndicator={false} className="flex-1 px-6">
+        {/* Header */}
         <View className="flex-row items-center justify-between py-6">
-          <Text className="text-white text-xl font-bold">New Transaction</Text>
+          <Text className="text-white text-xl font-bold">Edit Transaction</Text>
           <Pressable 
             onPress={() => router.back()}
             className="w-10 h-10 rounded-full bg-slate-900 items-center justify-center"
@@ -130,6 +130,7 @@ export default function AddTransaction() {
           </Pressable>
         </View>
 
+        {/* Type Toggle */}
         <View className="flex-row bg-slate-900 p-1.5 rounded-2xl mb-8">
           <Pressable 
             onPress={() => { setType('expense'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
@@ -145,28 +146,22 @@ export default function AddTransaction() {
           </Pressable>
         </View>
 
+        {/* Amount Input */}
         <View className="items-center mb-10">
           <Text className="text-slate-500 text-sm font-medium mb-2 uppercase tracking-widest">Amount</Text>
-          <View className="relative">
-            <TextInput
-              value={amount}
-              onChangeText={setAmount}
-              placeholder="0.00"
-              placeholderTextColor="#1E293B"
-              keyboardType="decimal-pad"
-              className={`text-6xl font-bold text-center h-20 min-w-[200px] ${type === 'income' ? 'text-emerald-400' : 'text-white'}`}
-            />
-            <Pressable 
-              onPress={handleVoiceInput}
-              disabled={isListening}
-              className={`absolute -right-16 top-4 w-12 h-12 rounded-full items-center justify-center ${isListening ? 'bg-emerald-500' : 'bg-slate-900 border border-slate-800'}`}
-            >
-              <Mic size={20} color={isListening ? '#000' : '#94A3B8'} />
-            </Pressable>
-          </View>
+          <TextInput
+            value={amount}
+            onChangeText={setAmount}
+            placeholder="0.00"
+            placeholderTextColor="#1E293B"
+            keyboardType="decimal-pad"
+            className={`text-6xl font-bold text-center h-20 min-w-[200px] ${type === 'income' ? 'text-emerald-400' : 'text-white'}`}
+          />
         </View>
 
+        {/* Form Fields */}
         <View className="gap-6 mb-10">
+          {/* Category Selector */}
           <View>
             <Text className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-3 ml-1">Category</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-6 px-6">
@@ -188,13 +183,16 @@ export default function AddTransaction() {
                         color={selectedCategory === cat.id ? '#FFF' : '#64748B'} 
                       />
                     </View>
-                    <Text className={`font-medium text-sm ${selectedCategory === cat.id ? 'text-white' : 'text-slate-400'}`}>{cat.name}</Text>
+                    <Text className={`font-medium text-sm ${selectedCategory === cat.id ? 'text-white' : 'text-slate-400'}`}>
+                      {cat.name}
+                    </Text>
                   </Pressable>
                 ))}
               </View>
             </ScrollView>
           </View>
 
+          {/* Account Selector */}
           <View>
             <Text className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-3 ml-1">Source Account</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-6 px-6">
@@ -210,13 +208,16 @@ export default function AddTransaction() {
                     }`}
                   >
                     <Check size={16} color={selectedAccount === account.id ? '#10B981' : '#64748B'} />
-                    <Text className={`font-medium text-sm ml-2 ${selectedAccount === account.id ? 'text-white' : 'text-slate-400'}`}>{account.name}</Text>
+                    <Text className={`font-medium text-sm ml-2 ${selectedAccount === account.id ? 'text-white' : 'text-slate-400'}`}>
+                      {account.name}
+                    </Text>
                   </Pressable>
                 ))}
               </View>
             </ScrollView>
           </View>
 
+          {/* Date & Note */}
           <View className="flex-row gap-4">
             <View className="flex-1">
                <Text className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-3 ml-1">Date</Text>
@@ -242,13 +243,26 @@ export default function AddTransaction() {
           </View>
         </View>
 
-        <NeonButton 
-          title="Save Transaction" 
-          onPress={handleSave}
-          className="mb-10 h-16"
-          disabled={!canSave || isSubmitting}
-          isLoading={isSubmitting}
-        />
+        {/* Action Buttons */}
+        <View className="gap-4 mb-20">
+          <NeonButton 
+            title="Update Transaction" 
+            onPress={handleUpdate}
+            className="h-16"
+            isLoading={isSubmitting}
+            disabled={!canSave || isSubmitting}
+          />
+          
+          <Pressable 
+            onPress={handleDelete}
+            className="h-16 rounded-2xl items-center justify-center bg-rose-500/10 border border-rose-500/20"
+          >
+            <View className="flex-row items-center">
+              <Trash2 size={20} color="#F43F5E" />
+              <Text className="text-rose-500 font-bold ml-2">Delete Transaction</Text>
+            </View>
+          </Pressable>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );

@@ -29,6 +29,11 @@ def main() -> None:
         help="Expense training view with propagated merchant labels.",
     )
     parser.add_argument(
+        "--hf-input",
+        default="outputs/hf_expense_training_view.csv",
+        help="HuggingFace transaction dataset for improved generalization.",
+    )
+    parser.add_argument(
         "--model-out",
         default="outputs/category_classifier_model.json",
         help="Path to store the trained model artifact.",
@@ -52,17 +57,25 @@ def main() -> None:
 
     base_dir = Path(__file__).resolve().parent
     input_path = (base_dir / args.input).resolve()
+    hf_input_path = (base_dir / args.hf_input).resolve() if args.hf_input else None
     model_out = (base_dir / args.model_out).resolve()
     metrics_out = (base_dir / args.metrics_out).resolve()
     predictions_out = (base_dir / args.predictions_out).resolve()
     report_out = (base_dir / args.report_out).resolve()
 
     rows = load_expense_rows(input_path)
+    
+    if hf_input_path and hf_input_path.exists():
+        print(f"Loading additional HF data from {hf_input_path}...")
+        hf_rows = load_expense_rows(hf_input_path)
+        rows.extend(hf_rows)
+        print(f"Merged {len(hf_rows)} HF rows. Total rows for training/validation: {len(rows)}")
+
     labeled_rows = [row for row in rows if row.get("assigned_category")]
     unlabeled_rows = [row for row in rows if not row.get("assigned_category")]
 
     if not labeled_rows:
-        raise SystemExit("No labeled rows found. Build merchant labels first.")
+        raise SystemExit("No labeled rows found.")
 
     train_rows, validation_rows = split_labeled_rows(labeled_rows)
     model = NaiveBayesCategoryClassifier.train(train_rows)

@@ -18,8 +18,14 @@ import {
   ChevronRight,
   Fingerprint,
   Moon,
-  Layers
+  Layers,
+  FileText
 } from 'lucide-react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import { api } from '../../utils/api';
+import CustomAlert from '../../components/CustomAlert';
+import { ActivityIndicator } from 'react-native';
+import { useData } from '../../hooks/useData';
 
 interface MenuItemProps {
   icon: React.ReactNode;
@@ -86,9 +92,60 @@ export default function Profile() {
   const { signOut } = useAuth();
   const colorScheme = useColorScheme() ?? 'dark';
   const { accounts } = useStore();
+  const { fetchAllData } = useData();
+
+  const [uploading, setUploading] = React.useState(false);
+  const [alertConfig, setAlertConfig] = React.useState<{ visible: boolean; title: string; message: string }>({
+    visible: false,
+    title: '',
+    message: '',
+  });
 
   const handleLogout = async () => {
     await signOut();
+  };
+
+  const handleFileImport = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'text/comma-separated-values', 'application/csv'],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const file = result.assets[0];
+      setUploading(true);
+
+      const formData = new FormData();
+      formData.append('file', {
+        uri: file.uri,
+        name: file.name || 'statement.csv',
+        type: file.mimeType || 'text/csv',
+      } as any);
+
+      await api.uploadFile('/ml/upload-statement/', formData);
+      
+      // Refresh data after upload
+      await fetchAllData();
+
+      setAlertConfig({
+        visible: true,
+        title: 'Success',
+        message: 'Your bank statement has been uploaded and transactions are being processed.'
+      });
+    } catch (error) {
+      console.error('File import error:', error);
+      setAlertConfig({
+        visible: true,
+        title: 'Error',
+        message: 'Failed to upload bank statement. Please try again.'
+      });
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -154,8 +211,13 @@ export default function Profile() {
               <MenuItem 
                 icon={<Layers size={20} color="#F59E0B" />} 
                 label="Budgets" 
-                isLast
                 onPress={() => router.push('/budgets/add')}
+              />
+              <MenuItem 
+                icon={uploading ? <ActivityIndicator size="small" color="#38BDF8" /> : <FileText size={20} color="#38BDF8" />} 
+                label="Import Bank Statement" 
+                isLast
+                onPress={handleFileImport}
               />
             </GlassCard>
           </View>
@@ -205,6 +267,12 @@ export default function Profile() {
           </View>
         </View>
       </ScrollView>
+      <CustomAlert
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        onClose={() => setAlertConfig({ ...alertConfig, visible: false })}
+      />
     </SafeAreaView>
   );
 }

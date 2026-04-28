@@ -55,6 +55,7 @@ export const useData = () => {
       setTransactions(txResponse.results);
       setBudgets(budgets);
       setDashboardSummary(summary);
+      console.log(`Fetch success: ${txResponse.results.length} transactions, ${accounts.length} accounts`);
       
     } catch (e: any) {
       const message = e?.response?.data || e?.message;

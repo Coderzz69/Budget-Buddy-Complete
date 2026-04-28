@@ -8,7 +8,9 @@ import { useColorScheme } from 'react-native';
 import { Bell, CreditCard, Landmark, Wallet, Banknote, TrendingUp, ChevronRight } from 'lucide-react-native';
 import { CartesianChart, Line } from 'victory-native';
 import { useUser } from '@clerk/expo';
-import { formatCurrency } from '../../utils/formatters'; // I'll create this
+import { formatCurrency } from '../../utils/formatters';
+import { IconSymbol } from '../../components/ui/icon-symbol';
+import { getTransactionIcon } from '../../utils/icons';
 import { SkeletonLoader } from '../../components/SkeletonLoader';
 import { cn } from '../../utils/cn';
 import { router } from 'expo-router';
@@ -20,7 +22,7 @@ export default function Dashboard() {
   const { user } = useUser();
   const colorScheme = useColorScheme() ?? 'dark';
   const themeColors = Colors[colorScheme];
-  const { accounts, transactions, dashboardSummary, isLoading } = useStore();
+  const { accounts, transactions, dashboardSummary, isLoading, categories } = useStore();
 
   const totalBalance = dashboardSummary?.totalBalance || 0;
   const recentTransactions = transactions.slice(0, 5);
@@ -31,8 +33,12 @@ export default function Dashboard() {
       const date = new Date(today);
       date.setDate(today.getDate() - (6 - i));
       date.setHours(0, 0, 0, 0);
+      
+      const key = date.getFullYear() + '-' + 
+                 String(date.getMonth() + 1).padStart(2, '0') + '-' + 
+                 String(date.getDate()).padStart(2, '0');
+                 
       const label = date.toLocaleDateString('en-US', { weekday: 'short' });
-      const key = date.toISOString().slice(0, 10);
       return { date, label, key };
     });
 
@@ -40,15 +46,20 @@ export default function Dashboard() {
     transactions.forEach((tx) => {
       if (tx.type !== 'expense') return;
       const txDate = new Date(tx.occurredAt);
-      if (Number.isNaN(txDate.getTime())) return;
-      txDate.setHours(0, 0, 0, 0);
-      const key = txDate.toISOString().slice(0, 10);
+      if (isNaN(txDate.getTime())) return;
+      
+      const key = txDate.getFullYear() + '-' + 
+                 String(txDate.getMonth() + 1).padStart(2, '0') + '-' + 
+                 String(txDate.getDate()).padStart(2, '0');
+                 
       if (!days.find((d) => d.key === key)) return;
       totals.set(key, (totals.get(key) || 0) + tx.amount);
     });
 
-    return days.map((d) => ({
-      x: d.label,
+    return days.map((d, index) => ({
+      x: index,
+      key: d.key,
+      label: d.label,
       y: totals.get(d.key) || 0,
     }));
   }, [transactions]);
@@ -61,6 +72,7 @@ export default function Dashboard() {
       default: return <Banknote size={20} color="#94A3B8" />;
     }
   };
+
 
   return (
     <SafeAreaView className="flex-1 bg-slate-950" edges={['top']}>
@@ -143,29 +155,35 @@ export default function Dashboard() {
 
       <View className="px-6 py-4">
         <Text className="text-white text-lg font-bold mb-4">Weekly Spending</Text>
-        <GlassCard className="p-4 items-center justify-center h-56 border-slate-900/50">
+        <GlassCard className="p-4 h-56 border-slate-900/50">
           {Platform.OS === 'web' ? (
             <WebLineChart data={chartData} />
           ) : (
-            <CartesianChart
-              data={chartData}
-              xKey="x"
-              yKeys={['y']}
-              axisOptions={{
-                labelColor: '#64748B',
-                lineColor: 'rgba(255, 255, 255, 0.08)',
-                tickCount: 5,
-              }}
-            >
-              {({ points }) => (
-                <Line
-                  points={points.y}
-                  color="#10B981"
-                  strokeWidth={3}
-                  animate={{ type: 'timing', duration: 500 }}
-                />
-              )}
-            </CartesianChart>
+            <View style={{ flex: 1, paddingBottom: 10 }}>
+              <CartesianChart
+                data={chartData}
+                xKey="x"
+                yKeys={['y']}
+                domainPadding={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                axisOptions={{
+                  labelColor: '#64748B',
+                  lineColor: 'rgba(255, 255, 255, 0.08)',
+                  tickCount: 5,
+                  formatXLabel: (val) => chartData[Math.round(val)]?.label || '',
+                  formatYLabel: (val) => formatCurrency(val).split('.')[0], // No decimals for chart
+                }}
+              >
+                {({ points }) => (
+                  <Line
+                    points={points.y}
+                    color="#10B981"
+                    strokeWidth={3}
+                    curveType="natural"
+                    animate={{ type: 'timing', duration: 500 }}
+                  />
+                )}
+              </CartesianChart>
+            </View>
           )}
         </GlassCard>
       </View>
@@ -174,7 +192,7 @@ export default function Dashboard() {
         <View className="px-6 py-4 mb-20">
           <View className="flex-row items-center justify-between mb-4 mt-6">
             <Text className="text-white text-lg font-bold">Recent Activity</Text>
-            <Pressable>
+            <Pressable onPress={() => router.push('/transactions')}>
               <Text className="text-primary font-medium">See All</Text>
             </Pressable>
           </View>
@@ -196,28 +214,38 @@ export default function Dashboard() {
                 <Text className="text-slate-400">No activities yet.</Text>
               </View>
             ) : (
-              recentTransactions.map((transaction) => (
-                <GlassCard key={transaction.id} className="p-4 border-slate-800/50">
-                  <View className="flex-row items-center justify-between">
-                    <View className="flex-row items-center flex-1">
-                      <View className="w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 items-center justify-center mr-4">
-                        <CreditCard size={24} color="#94A3B8" />
+              recentTransactions.map((transaction) => {
+                const category = categories.find(c => c.id === transaction.categoryId);
+                return (
+                  <GlassCard key={transaction.id} className="p-4 border-slate-800/50">
+                    <View className="flex-row items-center justify-between">
+                      <View className="flex-row items-center flex-1">
+                        <View 
+                          className="w-12 h-12 rounded-xl items-center justify-center mr-4"
+                          style={{ backgroundColor: category?.color ? `${category.color}20` : '#1E293B' }}
+                        >
+                          <IconSymbol 
+                            name={getTransactionIcon(category?.name || '', transaction.note)} 
+                            size={24} 
+                            color={category?.color || '#94A3B8'} 
+                          />
+                        </View>
+                        <View className="flex-1 mr-4">
+                          <Text className="text-white font-bold text-base" numberOfLines={1}>
+                            {transaction.note || 'No description'}
+                          </Text>
+                          <Text className="text-slate-400 text-xs uppercase">
+                            {category?.name || 'Uncategorized'} • {new Date(transaction.occurredAt).toLocaleDateString()}
+                          </Text>
+                        </View>
                       </View>
-                      <View className="flex-1 mr-4">
-                        <Text className="text-white font-bold text-base" numberOfLines={1}>
-                          {transaction.note || 'No description'}
-                        </Text>
-                        <Text className="text-slate-400 text-xs">
-                          {new Date(transaction.occurredAt).toLocaleDateString()}
-                        </Text>
-                      </View>
+                      <Text className={`font-bold text-base ${transaction.type === 'income' ? 'text-emerald-400' : 'text-white'}`}>
+                        {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
+                      </Text>
                     </View>
-                    <Text className={`font-bold text-base ${transaction.type === 'income' ? 'text-emerald-400' : 'text-white'}`}>
-                      {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
-                    </Text>
-                  </View>
-                </GlassCard>
-              ))
+                  </GlassCard>
+                );
+              })
             )}
           </View>
         </View>
