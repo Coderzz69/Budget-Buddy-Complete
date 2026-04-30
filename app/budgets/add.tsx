@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { X, Calendar, Layers } from 'lucide-react-native';
 import { NeonInput } from '../../components/NeonInput';
 import { NeonButton } from '../../components/NeonButton';
@@ -9,6 +9,7 @@ import { useApi } from '../../hooks/useApi';
 import { useStore } from '../../store/useStore';
 import { EmptyState } from '../../components/EmptyState';
 import * as Haptics from 'expo-haptics';
+import { IconSymbol } from '../../components/ui/icon-symbol';
 
 export default function AddBudget() {
   const api = useApi();
@@ -28,11 +29,28 @@ export default function AddBudget() {
 
   const monthLabel = monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
-  useEffect(() => {
-    if (!selectedCategory && categories.length > 0) {
-      setSelectedCategory(categories[0].id);
-    }
-  }, [categories, selectedCategory]);
+  const availableCategories = useMemo(() => {
+    const targetMonth = monthDate.getMonth();
+    const targetYear = monthDate.getFullYear();
+
+    const existingCategoryIds = budgets
+      .filter(b => {
+        const budgetDate = new Date(b.month);
+        return budgetDate.getMonth() === targetMonth && budgetDate.getFullYear() === targetYear;
+      })
+      .map(b => b.categoryId);
+    
+    return categories.filter(c => !existingCategoryIds.includes(c.id));
+  }, [categories, budgets, monthDate]);
+
+  useFocusEffect(
+    useCallback(() => {
+      // Reset form when focusing
+      setLimit('');
+      setError(null);
+      setSelectedCategory('');
+    }, [])
+  );
 
   const canSave = limit && !Number.isNaN(parseFloat(limit)) && selectedCategory;
 
@@ -74,7 +92,7 @@ export default function AddBudget() {
           <View className="gap-6 mb-8">
             <View>
               <Text className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-3 ml-1">Category</Text>
-              {categories.length === 0 ? (
+              {availableCategories.length === 0 ? (
                 <EmptyState
                   icon={Layers}
                   title="No categories"
@@ -85,7 +103,7 @@ export default function AddBudget() {
               ) : (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-6 px-6">
                   <View className="flex-row gap-3 pr-12">
-                    {categories.map((cat) => (
+                    {availableCategories.map((cat) => (
                       <Pressable
                         key={cat.id}
                         onPress={() => { setSelectedCategory(cat.id); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
@@ -94,7 +112,13 @@ export default function AddBudget() {
                           selectedCategory === cat.id ? 'bg-primary/20 border-primary' : 'bg-slate-900 border-slate-900'
                         ].join(' ')}
                       >
-                        <Text className="text-lg mr-2">{cat.icon || '🏷️'}</Text>
+                        <View className="mr-2">
+                          <IconSymbol 
+                            name={cat.icon || 'ellipsis.circle.fill'} 
+                            size={20} 
+                            color={selectedCategory === cat.id ? '#FFFFFF' : cat.color || '#64748B'} 
+                          />
+                        </View>
                         <Text className={selectedCategory === cat.id ? 'text-white font-medium text-sm' : 'text-slate-400 font-medium text-sm'}>
                           {cat.name}
                         </Text>

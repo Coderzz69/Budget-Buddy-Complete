@@ -7,6 +7,7 @@ import { Colors } from '../../constants/theme';
 import { useColorScheme } from '../../hooks/use-color-scheme';
 import { GlassView } from '@/components/ui/GlassView';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { formatCurrency } from '@/utils/formatters';
 
 export default function TransactionsScreen() {
     const [searchQuery, setSearchQuery] = useState('');
@@ -119,8 +120,8 @@ export default function TransactionsScreen() {
                         <Text style={[styles.transactionDate, { color: theme.icon }]}>{new Date(item.date).toLocaleDateString()}</Text>
                     </View>
                     <View style={{ alignItems: 'flex-end', gap: 8 }}>
-                        <Text style={[styles.amount, { color: color }]}>
-                            {isIncome ? '+' : '-'}${item.amount.toFixed(2)}
+                         <Text style={[styles.amount, { color: color }]}>
+                            {isIncome ? '+' : '-'}{formatCurrency(item.amount)}
                         </Text>
                         <View style={{ flexDirection: 'row', gap: 12 }}>
                             <TouchableOpacity onPress={() => {
