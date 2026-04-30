@@ -118,7 +118,7 @@ export default function EditTransaction() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       className="flex-1 bg-slate-950"
     >
-      <ScrollView showsVerticalScrollIndicator={false} className="flex-1 px-6">
+      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" className="flex-1 px-6">
         {/* Header */}
         <View className="flex-row items-center justify-between py-6">
           <Text className="text-white text-xl font-bold">Edit Transaction</Text>

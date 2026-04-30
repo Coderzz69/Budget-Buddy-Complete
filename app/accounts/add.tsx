@@ -72,10 +72,8 @@ export default function AddAccount() {
         style={styles.flex}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="always"
-        keyboardDismissMode="none"
-        automaticallyAdjustKeyboardInsets
-        contentInsetAdjustmentBehavior="always"
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         <View style={styles.header}>
           <Text style={styles.title}>Add Account</Text>

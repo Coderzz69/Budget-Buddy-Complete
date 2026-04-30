@@ -90,7 +90,7 @@ export default function EditBudget() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <ScrollView style={styles.flex} contentContainerStyle={styles.content}>
+      <ScrollView style={styles.flex} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <Text style={styles.title}>Edit Budget</Text>
           <Pressable onPress={() => router.back()} style={styles.closeButton}>

@@ -311,3 +311,41 @@ class ModelRun(models.Model):
 
     class Meta:
         db_table = 'ModelRun'
+
+
+class Goal(models.Model):
+    """Represents a user-defined savings goal (e.g. 'Buy Honda Shine')."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='goals', db_column='userId')
+    name = models.CharField(max_length=255)
+    target_amount = models.FloatField()
+    saved_amount = models.FloatField(default=0.0)
+    monthly_contribution = models.FloatField()
+    icon = models.CharField(max_length=100, blank=True, null=True, default='target')
+    color = models.CharField(max_length=20, blank=True, null=True, default='#38BDF8')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'Goal'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.name} (target: {self.target_amount})'
+
+    @property
+    def months_remaining(self):
+        remaining = self.target_amount - self.saved_amount
+        if remaining <= 0:
+            return 0
+        if self.monthly_contribution <= 0:
+            return None
+        import math
+        return math.ceil(remaining / self.monthly_contribution)
+
+    @property
+    def progress_pct(self):
+        if self.target_amount <= 0:
+            return 0.0
+        return round(min((self.saved_amount / self.target_amount) * 100, 100), 1)
+

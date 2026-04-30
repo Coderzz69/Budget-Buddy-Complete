@@ -9,6 +9,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import { syncUser } from '../utils/api';
+import { DismissKeyboard } from '../components/DismissKeyboard';
 
 import '../global.css'
 
@@ -96,23 +97,25 @@ function AppContent() {
         }
         style={styles.background}
       />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: 'transparent' },
-          animation: 'fade',
-        }}
-      >
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(home)" />
-        <Stack.Screen name="transactions/index" />
-        <Stack.Screen name="transactions/add" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="accounts/index" />
-        <Stack.Screen name="accounts/add" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="categories/index" />
-        <Stack.Screen name="categories/add" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="budgets/add" options={{ presentation: 'modal' }} />
-      </Stack>
+      <DismissKeyboard>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: 'transparent' },
+            animation: 'fade',
+          }}
+        >
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(home)" />
+          <Stack.Screen name="transactions/index" />
+          <Stack.Screen name="transactions/add" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="accounts/index" />
+          <Stack.Screen name="accounts/add" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="categories/index" />
+          <Stack.Screen name="categories/add" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="budgets/add" options={{ presentation: 'modal' }} />
+        </Stack>
+      </DismissKeyboard>
       <StatusBar style="light" />
     </View>
   );

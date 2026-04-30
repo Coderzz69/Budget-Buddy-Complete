@@ -1,26 +1,30 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { GlassCard } from '../../components/GlassCard';
 import { PolarChart, Pie } from 'victory-native';
-import { ChevronLeft, ChevronRight, TrendingUp, Sparkles, Search, Scissors, TrendingDown } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, TrendingUp, Sparkles, Search, Scissors, TrendingDown, Target } from 'lucide-react-native';
 import { formatCurrency } from '../../utils/formatters';
 import { SkeletonLoader } from '../../components/SkeletonLoader';
 import { EmptyState } from '../../components/EmptyState';
 import { cn } from '../../utils/cn';
 import { WebCategoryChart } from '../../components/charts/WebCharts';
-import { InsightsMonthlyResponse, InsightCard, useApi } from '../../hooks/useApi';
+import { InsightsMonthlyResponse, InsightCard, useApi, Goal } from '../../hooks/useApi';
 import { IconSymbol } from '../../components/ui/icon-symbol';
 
 const PALETTE = ['#10B981', '#38BDF8', '#F59E0B', '#EF4444', '#A855F7', '#F97316', '#14B8A6', '#EAB308'];
 
 export default function Insights() {
   const api = useApi();
+  const apiRef = useRef(api);
+  useEffect(() => { apiRef.current = api; }, [api]);
+
   const [currentDate, setCurrentDate] = useState(new Date());
   const [insights, setInsights] = useState<InsightsMonthlyResponse | null>(null);
   const [isInsightsLoading, setIsInsightsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [goals, setGoals] = useState<Goal[]>([]);
 
   const monthString = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
 
@@ -28,7 +32,7 @@ export default function Insights() {
     setIsInsightsLoading(true);
     setError('');
     try {
-      const response = await api.getMonthlyInsights(monthString);
+      const response = await apiRef.current.getMonthlyInsights(monthString);
       setInsights(response.data);
     } catch (err) {
       console.error('Failed to load insights:', err);
@@ -36,12 +40,25 @@ export default function Insights() {
     } finally {
       setIsInsightsLoading(false);
     }
-  }, [api, monthString]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthString]);
+
+  const loadGoals = useCallback(async () => {
+    try {
+      const res = await apiRef.current.getGoals();
+      setGoals(Array.isArray(res.data) ? res.data : []);
+    } catch (e) {
+      console.error('Failed to load goals:', e);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       loadInsights();
-    }, [loadInsights])
+      loadGoals();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [monthString])
   );
 
   const today = new Date();
@@ -71,7 +88,7 @@ export default function Insights() {
 
   return (
     <SafeAreaView className="flex-1 bg-slate-950" edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} className="flex-1">
+      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" className="flex-1">
         {/* Header */}
         <View className="px-6 py-4">
           <Text className="text-white text-2xl font-bold">Insights</Text>
@@ -264,6 +281,72 @@ export default function Insights() {
              </GlassCard>
            ) : null}
         </View>
+
+        {/* Active Goals / Savings Targets */}
+        {(!loading || insights) && goals.length > 0 && (
+          <View className="px-6 mb-8">
+            <Text className="text-white text-lg font-bold mb-4">Active Goals</Text>
+            <View className="gap-4">
+              {goals.map((goal) => {
+                const isComplete = goal.progress_pct >= 100;
+                return (
+                  <GlassCard key={goal.id} className="p-5 border-slate-800/50 bg-blue-500/5" intensity="high">
+                    {/* Goal Header */}
+                    <View className="flex-row items-center justify-between mb-4">
+                      <View className="flex-row items-center">
+                        <View className="w-10 h-10 rounded-xl bg-blue-500/20 items-center justify-center mr-3">
+                          <Target size={20} color={goal.color || '#38BDF8'} />
+                        </View>
+                        <View>
+                          <Text className="text-white font-bold text-base">{goal.name}</Text>
+                          <Text className="text-slate-400 text-xs">
+                            {isComplete ? '🎉 Goal reached!' : `${goal.months_remaining ?? '—'} months to go`}
+                          </Text>
+                        </View>
+                      </View>
+                      <View className="items-end">
+                        <Text className="text-white font-bold">{formatCurrency(goal.target_amount)}</Text>
+                        <Text className="text-slate-400 text-[10px]">Target</Text>
+                      </View>
+                    </View>
+
+                    {/* Progress */}
+                    <View className="mb-4">
+                      <View className="flex-row justify-between items-center mb-2">
+                        <Text className="text-slate-300 text-xs font-medium">
+                          Saved: {formatCurrency(goal.saved_amount)}
+                        </Text>
+                        <Text className="text-blue-400 text-xs font-bold">{goal.progress_pct.toFixed(1)}%</Text>
+                      </View>
+                      <View className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                        <View
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${goal.progress_pct}%`,
+                            backgroundColor: isComplete ? '#F59E0B' : (goal.color || '#38BDF8'),
+                          }}
+                        />
+                      </View>
+                    </View>
+
+                    {/* Tip */}
+                    {!isComplete && goal.months_remaining != null && (
+                      <View className="bg-slate-900/50 p-3 rounded-xl border border-slate-800/50">
+                        <Text className="text-slate-300 text-xs">
+                          <Text className="text-emerald-400 font-bold">Good! </Text>
+                          At ₹{goal.monthly_contribution.toLocaleString()}/month you can reach this goal in{' '}
+                          <Text className="text-white font-bold">
+                            {goal.months_remaining} month{goal.months_remaining !== 1 ? 's' : ''}
+                          </Text>.
+                        </Text>
+                      </View>
+                    )}
+                  </GlassCard>
+                );
+              })}
+            </View>
+          </View>
+        )}
 
         {/* Category Breakdown */}
         {((!loading || insights) && chartData.length > 0) && (

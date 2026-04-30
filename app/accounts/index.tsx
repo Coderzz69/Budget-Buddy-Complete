@@ -22,7 +22,7 @@ export default function Accounts() {
 
   return (
     <SafeAreaView className="flex-1 bg-slate-950" edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} className="flex-1">
+      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" className="flex-1">
         <View className="px-6 py-4 flex-row items-center justify-between">
           <View>
             <Text className="text-white text-2xl font-bold">Accounts</Text>

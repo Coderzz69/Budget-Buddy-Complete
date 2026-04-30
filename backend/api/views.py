@@ -15,11 +15,11 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from .models import (
     User, Account, Category, Transaction, Budget, 
-    InsightSnapshot, RecurringPattern, MLTrainingRow
+    InsightSnapshot, RecurringPattern, MLTrainingRow, Goal
 )
 from .serializers import (
     UserSerializer, AccountSerializer, CategorySerializer, TransactionSerializer, 
-    BudgetSerializer, InsightSnapshotSerializer, RecurringPatternSerializer
+    BudgetSerializer, InsightSnapshotSerializer, RecurringPatternSerializer, GoalSerializer
 )
 from .user_sync import sync_user_record
 from .ml_services import get_ml_summary, predict_category
@@ -1205,3 +1205,57 @@ class SimulateSavingsView(APIView):
             'simulated_trajectory': simulated_trajectory
         })
 
+
+# ---------------------------------------------------------------------------
+# Goals
+# ---------------------------------------------------------------------------
+
+class GoalViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        goals = Goal.objects.filter(user=request.user.db_user)
+        return Response(GoalSerializer(goals, many=True).data)
+
+    def retrieve(self, request, pk=None):
+        goal = Goal.objects.filter(id=pk, user=request.user.db_user).first()
+        if not goal:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(GoalSerializer(goal).data)
+
+    def create(self, request):
+        serializer = GoalSerializer(data=request.data)
+        if serializer.is_valid():
+            goal = Goal.objects.create(
+                user=request.user.db_user,
+                name=serializer.validated_data['name'],
+                target_amount=serializer.validated_data['target_amount'],
+                saved_amount=serializer.validated_data.get('saved_amount', 0.0),
+                monthly_contribution=serializer.validated_data['monthly_contribution'],
+                icon=serializer.validated_data.get('icon', 'target'),
+                color=serializer.validated_data.get('color', '#38BDF8'),
+            )
+            return Response(GoalSerializer(goal).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, pk=None):
+        goal = Goal.objects.filter(id=pk, user=request.user.db_user).first()
+        if not goal:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        serializer = GoalSerializer(goal, data=request.data, partial=True)
+        if serializer.is_valid():
+            for field, value in serializer.validated_data.items():
+                setattr(goal, field, value)
+            goal.save()
+            return Response(GoalSerializer(goal).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def partial_update(self, request, pk=None):
+        return self.update(request, pk)
+
+    def destroy(self, request, pk=None):
+        goal = Goal.objects.filter(id=pk, user=request.user.db_user).first()
+        if not goal:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        goal.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

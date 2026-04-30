@@ -90,7 +90,7 @@ export default function Transactions() {
         </Pressable>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} className="flex-1 px-6 py-4">
+      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" className="flex-1 px-6 py-4">
         {transactions.length === 0 ? (
           <EmptyState
             icon={CreditCard}
