@@ -38,6 +38,7 @@ const MAPPING: Record<string, { icon: string, lib: 'material' | 'fa' }> = {
   'leaf.fill': { icon: 'leaf', lib: 'fa' },
   'wineglass.fill': { icon: 'glass-martini-alt', lib: 'fa' },
   'fitness': { icon: 'dumbbell', lib: 'fa' },
+  'arrow.up.arrow.down': { icon: 'right-left', lib: 'fa' },
 };
 
 export function IconSymbol({

@@ -11,6 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { dataService, Transaction } from '@/utils/dataService';
 import { GlassView } from '@/components/ui/GlassView';
 import { getTransactionIcon } from '@/utils/icons';
+import { formatCurrency } from '@/utils/formatters';
 
 const { width } = Dimensions.get('window');
 
@@ -127,7 +128,7 @@ export default function DashboardScreen() {
                             styles.transactionAmount,
                             { color: color }
                         ]}>
-                            {isIncome ? '+' : '-'}${item.amount.toFixed(2)}
+                            {isIncome ? '+' : '-'}{formatCurrency(item.amount)}
                         </Text>
                         <View style={{ flexDirection: 'row', gap: 12 }}>
                             <TouchableOpacity
@@ -188,7 +189,7 @@ export default function DashboardScreen() {
                         <View style={styles.cardContent}>
                             <View>
                                 <Text style={styles.balanceLabel}>Wallet Balance</Text>
-                                <Text style={styles.balanceAmount}>${summary.balance.toFixed(2)}</Text>
+                                <Text style={styles.balanceAmount}>{formatCurrency(summary.balance)}</Text>
                             </View>
                             <View style={styles.statsRow}>
                                 <GlassView intensity={30} style={styles.statItem}>
@@ -197,7 +198,7 @@ export default function DashboardScreen() {
                                     </View>
                                     <View>
                                         <Text style={styles.statLabel}>Income</Text>
-                                        <Text style={styles.statValue}>${summary.income.toFixed(2)}</Text>
+                                        <Text style={styles.statValue}>{formatCurrency(summary.income)}</Text>
                                     </View>
                                 </GlassView>
                                 <GlassView intensity={30} style={styles.statItem}>
@@ -206,7 +207,7 @@ export default function DashboardScreen() {
                                     </View>
                                     <View>
                                         <Text style={styles.statLabel}>Expense</Text>
-                                        <Text style={styles.statValue}>${summary.expense.toFixed(2)}</Text>
+                                        <Text style={styles.statValue}>{formatCurrency(summary.expense)}</Text>
                                     </View>
                                 </GlassView>
                             </View>

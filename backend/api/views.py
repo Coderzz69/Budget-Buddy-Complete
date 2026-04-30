@@ -4,6 +4,7 @@ import io
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
+from django.core.cache import cache
 from django.db import transaction as django_transaction
 from django.db.models import Q, Sum
 from django.utils import timezone as django_timezone
@@ -22,6 +23,7 @@ from .serializers import (
 )
 from .user_sync import sync_user_record
 from .ml_services import get_ml_summary, predict_category
+from .shared_insights import build_insight_cards
 
 
 # ---------------------------------------------------------------------------
@@ -47,10 +49,15 @@ def _period_bounds(period, now):
         previous_start = current_start.replace(year=current_start.year - 1)
     else:
         current_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        previous_end_marker = current_start - timedelta(days=1)
-        previous_start = previous_end_marker.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        previous_end = current_start - timedelta(seconds=1)
+        previous_start = previous_end.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        if current_start.month == 12:
+            current_end = current_start.replace(year=current_start.year + 1, month=1) - timedelta(seconds=1)
+        else:
+            current_end = current_start.replace(month=current_start.month + 1) - timedelta(seconds=1)
 
-    return current_start, now, previous_start, current_start
+    return current_start, current_end, previous_start, previous_end
 
 
 def _period_label(period):
@@ -98,110 +105,6 @@ def _amount_or_none(value):
     return round(value, 2) if value is not None else None
 
 
-def _build_insight_cards(
-    *,
-    period,
-    summary,
-    top_category,
-    highest_expense,
-    budget_alert,
-    peak_day,
-    breakdown,
-):
-    cards = []
-    period_label = _period_label(period)
-    delta_amount = summary['deltaAmount']
-    delta_pct = summary['deltaPct']
-    total_spend = summary.get('totalSpend', 0)
-
-    # 1. Spotlight Summary (Premium feature for overall feel)
-    if total_spend > 0:
-        budget_limit = summary.get('budgetLimit', 1000) # Fallback limit
-        status = "On Track"
-        if total_spend > budget_limit:
-            status = "Over Budget"
-        elif total_spend < budget_limit * 0.8:
-            status = "Under Budget (Excellent)"
-            
-        cards.append({
-            'id': 'spotlight',
-            'kind': 'spotlight',
-            'title': 'Overall Summary',
-            'message': f"You've spent ${total_spend:.2f} this month. Status: {status}.",
-            'tone': 'info' if status == "On Track" else ('success' if "Excellent" in status else 'warning'),
-            'amount': total_spend,
-            'footer': f"Current monthly budget limit: ${budget_limit:.0f}",
-        })
-
-    # 2. Reduction Suggestion (Discretionary spending check)
-    discretionary_cats = ['food', 'dining', 'shopping', 'entertainment', 'lifestyle']
-    reduction_candidates = [
-        item for item in breakdown 
-        if any(cat in item['categoryName'].lower() for cat in discretionary_cats) 
-        and item['percentage'] > 20
-    ]
-    if reduction_candidates:
-        worst = max(reduction_candidates, key=lambda x: x['percentage'])
-        cards.append({
-            'id': 'reduction-tip',
-            'kind': 'reduction',
-            'title': 'Trimming Opportunity',
-            'message': f"You're spending {worst['percentage']:.0f}% on {worst['categoryName']}. Small adjustments here could save you ${worst['amount']*0.15:.0f} next month.",
-            'tone': 'warning',
-            'amount': worst['amount'] * 0.15, 
-            'footer': "Target: 15% reduction",
-        })
-
-    # 3. Potential to spend more (Spending Buffer)
-    budget_limit = summary.get('budgetLimit', 1000)
-    if total_spend < budget_limit * 0.7:
-        buffer = budget_limit - total_spend
-        cards.append({
-            'id': 'spending-buffer',
-            'kind': 'opportunity',
-            'title': 'Spending Buffer',
-            'message': f"You have a ${buffer:.0f} buffer remaining this month. Perfect for a well-deserved treat or self-care.",
-            'tone': 'success',
-            'amount': buffer,
-            'footer': "Safe to spend more",
-        })
-
-    # 4. Spending Change Insight (Positive/Negative)
-    if delta_pct is not None and summary.get('previousSpend', 0) > 0:
-        direction = 'more' if delta_amount > 0 else 'less'
-        tone = _tone_for_delta(delta_amount)
-        
-        message = f"Spent {abs(delta_pct):.0f}% {direction} than last {period_label}."
-        if delta_amount < 0:
-            message = f"Great work! You spent {abs(delta_pct):.0f}% less than last {period_label}."
-            
-        cards.append({
-            'id': 'spend-change',
-            'kind': 'spend_change',
-            'title': 'Monthly Progress',
-            'message': message,
-            'tone': tone,
-            'amount': abs(delta_amount),
-            'footer': f"{summary['transactionCount']} expenses this {period_label}",
-        })
-
-    # 5. Top Category Insight
-    if top_category:
-        if top_category['changePct'] is not None and summary.get('previousSpend', 0) > 0:
-            footer = f"{top_category['changePct']:+.0f}% vs last {period_label}"
-        else:
-            footer = f"{top_category['transactionCount']} transactions"
-        cards.append({
-            'id': 'top-category',
-            'kind': 'top_category',
-            'title': 'Top Category',
-            'message': f"{top_category['categoryName']} drove {top_category['percentage']:.0f}% of spending.",
-            'tone': 'warning' if top_category['percentage'] >= 40 else 'positive',
-            'amount': top_category['amount'],
-            'footer': footer,
-        })
-
-    return cards[:6]
 
 
 # ---------------------------------------------------------------------------
@@ -225,9 +128,11 @@ class DashboardView(APIView):
             occurredAt__gte=start_of_month,
         ).aggregate(total=Sum('amount'))['total'] or 0.0
 
+        # 24-hour buffer to handle IST/UTC offset (e.g. 1st April IST is 31st March 18:30 UTC)
         total_budget_limit = Budget.objects.filter(
             user=user,
-            month__gte=start_of_month,
+            month__gte=start_of_month - timedelta(hours=24),
+            month__lt=start_of_month + timedelta(hours=24)
         ).aggregate(total=Sum('limit'))['total'] or 0.0
 
         insights = InsightSnapshot.objects.filter(user=user).order_by('-createdAt')[:3]
@@ -252,7 +157,24 @@ class InsightsSummaryView(APIView):
             )
 
         user = request.user.db_user
-        now = django_timezone.now()
+        
+        # Determine the target date based on query params (for historical insights)
+        year_param = request.query_params.get('year')
+        month_param = request.query_params.get('month')
+        
+        if year_param and month_param:
+            try:
+                # Set to end of month so all transactions color the insight
+                y, m = int(year_param), int(month_param)
+                if m == 12:
+                    now = django_timezone.now().replace(year=y+1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0) - timedelta(seconds=1)
+                else:
+                    now = django_timezone.now().replace(year=y, month=m+1, day=1, hour=0, minute=0, second=0, microsecond=0) - timedelta(seconds=1)
+            except (ValueError, TypeError):
+                now = django_timezone.now()
+        else:
+            now = django_timezone.now()
+
         current_start, current_end, previous_start, previous_end = _period_bounds(period, now)
         month_start, month_end = _month_bounds(now)
 
@@ -280,11 +202,12 @@ class InsightsSummaryView(APIView):
                 occurredAt__lt=month_end,
             ).select_related('category')
         )
+        # Robust budget fetching for the month
         month_budgets = list(
             Budget.objects.filter(
                 user=user,
-                month__gte=month_start,
-                month__lt=month_end,
+                month__gte=month_start - timedelta(hours=24),
+                month__lt=month_start + timedelta(hours=24),
             ).select_related('category')
         )
 
@@ -388,7 +311,7 @@ class InsightsSummaryView(APIView):
             'transactionCount': len(current_expenses),
         }
 
-        cards = _build_insight_cards(
+        cards = build_insight_cards(
             period=period,
             summary=summary,
             top_category=top_category,
@@ -396,7 +319,9 @@ class InsightsSummaryView(APIView):
             budget_alert=budget_alert,
             peak_day=peak_day,
             breakdown=breakdown,
+            currency=user.currency
         )
+
 
         # Add ML driven cards
         ml_snapshots = InsightSnapshot.objects.filter(user=user).order_by('-createdAt')
@@ -410,7 +335,7 @@ class InsightsSummaryView(APIView):
                 'tone': 'info',
             })
 
-        recurring = RecurringPattern.objects.filter(user=user, isActive=True).order_by('-confidence')
+        recurring = RecurringPattern.objects.filter(user=user, isActive=True).order_by('-confidence_score')
         if recurring.exists():
             top_rec = recurring[0]
             cards.append({
@@ -566,6 +491,9 @@ class AccountViewSet(viewsets.ViewSet):
             return Response(AccountSerializer(account).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    def partial_update(self, request, pk=None):
+        return self.update(request, pk)
+
     def destroy(self, request, pk=None):
         account = Account.objects.filter(id=pk, user=request.user.db_user).first()
         if not account:
@@ -624,6 +552,9 @@ class CategoryViewSet(viewsets.ViewSet):
             serializer.save()
             return Response(CategorySerializer(category).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def partial_update(self, request, pk=None):
+        return self.update(request, pk)
 
     def destroy(self, request, pk=None):
         category = Category.objects.filter(id=pk, user=request.user.db_user).first()
@@ -842,6 +773,9 @@ class TransactionViewSet(viewsets.ViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    def partial_update(self, request, pk=None):
+        return self.update(request, pk)
+
     def destroy(self, request, pk=None):
         user = request.user.db_user
         tx = Transaction.objects.filter(id=pk, user=user).first()
@@ -893,6 +827,14 @@ class BudgetViewSet(viewsets.ViewSet):
                     month=vd['month'],
                     limit=vd['limit'],
                 )
+                
+                # Invalidate insights cache
+                try:
+                    month_str = vd['month'].strftime('%Y-%m')
+                    cache.delete(f"insights_{request.user.db_user.id}_{month_str}")
+                except Exception:
+                    pass
+
                 return Response(BudgetSerializer(budget).data, status=status.HTTP_201_CREATED)
             except Exception as e:
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -905,15 +847,35 @@ class BudgetViewSet(viewsets.ViewSet):
         serializer = BudgetSerializer(budget, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            
+            # Invalidate insights cache
+            try:
+                month_str = budget.month.strftime('%Y-%m')
+                cache.delete(f"insights_{request.user.db_user.id}_{month_str}")
+            except Exception:
+                pass
+
             return Response(BudgetSerializer(budget).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def partial_update(self, request, pk=None):
+        return self.update(request, pk)
 
     def destroy(self, request, pk=None):
         budget = Budget.objects.filter(id=pk, user=request.user.db_user).first()
         if not budget:
             return Response(status=status.HTTP_404_NOT_FOUND)
         try:
+            month_str = budget.month.strftime('%Y-%m')
+            user_id = request.user.db_user.id
             budget.delete()
+            
+            # Invalidate insights cache
+            try:
+                cache.delete(f"insights_{user_id}_{month_str}")
+            except Exception:
+                pass
+                
             return Response(status=status.HTTP_204_NO_CONTENT)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

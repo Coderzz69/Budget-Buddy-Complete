@@ -11,6 +11,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { cn } from '../../utils/cn';
 import { WebCategoryChart } from '../../components/charts/WebCharts';
 import { InsightsMonthlyResponse, InsightCard, useApi } from '../../hooks/useApi';
+import { IconSymbol } from '../../components/ui/icon-symbol';
 
 const PALETTE = ['#10B981', '#38BDF8', '#F59E0B', '#EF4444', '#A855F7', '#F97316', '#14B8A6', '#EAB308'];
 
@@ -62,7 +63,7 @@ export default function Insights() {
   const chartData = (insights?.top_categories || []).map((item, index) => ({
     label: item.category,
     value: Number(item.amount),
-    color: PALETTE[index % PALETTE.length],
+    color: (item as any).color || PALETTE[index % PALETTE.length],
   }));
 
   const totalSpending = insights?.total_spent || 0;
@@ -272,15 +273,41 @@ export default function Insights() {
               {(insights?.top_categories || []).map((cat, index) => (
                 <GlassCard key={cat.category} className="flex-row items-center p-4">
                   <View 
-                    className="w-3 h-3 rounded-full mr-4" 
-                    style={{ backgroundColor: PALETTE[index % PALETTE.length] }} 
-                  />
-                  <View className="flex-1 mr-4">
-                    <Text className="text-white font-medium">{cat.category}</Text>
+                    className="w-10 h-10 rounded-xl mr-4 items-center justify-center opacity-80"
+                    style={{ backgroundColor: (cat as any).color ? `${(cat as any).color}20` : `${PALETTE[index % PALETTE.length]}20` }}
+                  >
+                    <IconSymbol 
+                      name={(cat as any).icon || 'ellipsis.circle.fill'} 
+                      size={20} 
+                      color={(cat as any).color || PALETTE[index % PALETTE.length]} 
+                    />
                   </View>
-                  <Text className="text-slate-400 text-sm mr-4">{cat.percentage.toFixed(0)}%</Text>
+                  <View className="flex-1 mr-4">
+                    <View className="flex-row justify-between items-center mb-1">
+                      <Text className="text-white font-medium">{cat.category}</Text>
+                      {(cat as any).budget > 0 && (
+                        <Text className="text-slate-400 text-[10px]">
+                          of {formatCurrency((cat as any).budget)}
+                        </Text>
+                      )}
+                    </View>
+                    {(cat as any).budget > 0 ? (
+                      <View className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+                        <View 
+                          className="h-full rounded-full"
+                          style={{ 
+                            width: `${Math.min((cat.amount / (cat as any).budget) * 100, 100)}%`,
+                            backgroundColor: cat.amount > (cat as any).budget ? '#EF4444' : ((cat as any).color || PALETTE[index % PALETTE.length])
+                          }}
+                        />
+                      </View>
+                    ) : (
+                      <Text className="text-slate-500 text-[10px]">No budget set</Text>
+                    )}
+                  </View>
                   <View className="items-end">
                     <Text className="text-white font-bold">{formatCurrency(cat.amount)}</Text>
+                    <Text className="text-slate-400 text-[10px]">{cat.percentage.toFixed(0)}% of spend</Text>
                   </View>
                 </GlassCard>
               ))}

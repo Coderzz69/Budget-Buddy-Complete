@@ -113,63 +113,75 @@ export function WebCategoryChart({ data, total }: WebCategoryChartProps) {
   const center = size / 2;
 
   let currentAngle = 0;
+  const isZero = total === 0 || isNaN(total);
 
   return (
     <View className="w-full items-center">
       <View className="h-[250px] w-full items-center justify-center">
         <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-          {data.map((item, index) => {
-            const angle = (item.value / total) * 360;
-            if (angle <= 0) return null;
-            
-            // Handle full circle case
-            if (angle >= 359.9) {
-              return (
-                <Circle 
-                  key={item.label}
-                  cx={center} 
-                  cy={center} 
-                  r={(radius + innerRadius) / 2} 
-                  stroke={item.color}
-                  strokeWidth={radius - innerRadius}
-                  fill="none"
-                />
-              );
-            }
+          {isZero ? (
+            <Circle 
+              cx={center} 
+              cy={center} 
+              r={(radius + innerRadius) / 2} 
+              stroke="rgba(255,255,255,0.08)"
+              strokeWidth={radius - innerRadius}
+              fill="none"
+            />
+          ) : (
+            data.map((item, index) => {
+              const angle = (item.value / total) * 360;
+              if (angle <= 0 || isNaN(angle)) return null;
+              
+              // Handle full circle case
+              if (angle >= 359.9) {
+                return (
+                  <Circle 
+                    key={item.label}
+                    cx={center} 
+                    cy={center} 
+                    r={(radius + innerRadius) / 2} 
+                    stroke={item.color}
+                    strokeWidth={radius - innerRadius}
+                    fill="none"
+                  />
+                );
+              }
 
-            const startAngle = currentAngle;
-            const endAngle = currentAngle + angle;
-            currentAngle += angle;
+              const startAngle = currentAngle;
+              const endAngle = currentAngle + angle;
+              currentAngle += angle;
 
-            // Arcs are better drawn in radians
-            const toRad = (deg: number) => (deg * Math.PI) / 180;
-            
-            const x1 = center + radius * Math.cos(toRad(startAngle));
-            const y1 = center + radius * Math.sin(toRad(startAngle));
-            const x2 = center + radius * Math.cos(toRad(endAngle));
-            const y2 = center + radius * Math.sin(toRad(endAngle));
+              // Arcs are better drawn in radians
+              const toRad = (deg: number) => (deg * Math.PI) / 180;
+              
+              const x1 = center + radius * Math.cos(toRad(startAngle));
+              const y1 = center + radius * Math.sin(toRad(startAngle));
+              const x2 = center + radius * Math.cos(toRad(endAngle));
+              const y2 = center + radius * Math.sin(toRad(endAngle));
 
-            const ix1 = center + innerRadius * Math.cos(toRad(startAngle));
-            const iy1 = center + innerRadius * Math.sin(toRad(startAngle));
-            const ix2 = center + innerRadius * Math.cos(toRad(endAngle));
-            const iy2 = center + innerRadius * Math.sin(toRad(endAngle));
+              const ix1 = center + innerRadius * Math.cos(toRad(startAngle));
+              const iy1 = center + innerRadius * Math.sin(toRad(startAngle));
+              const ix2 = center + innerRadius * Math.cos(toRad(endAngle));
+              const iy2 = center + innerRadius * Math.sin(toRad(endAngle));
 
-            const largeArcFlag = angle > 180 ? 1 : 0;
+              const largeArcFlag = angle > 180 ? 1 : 0;
 
-            const d = `
-              M ${x1} ${y1}
-              A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}
-              L ${ix2} ${iy2}
-              A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${ix1} ${iy1}
-              Z
-            `;
+              const d = `
+                M ${x1} ${y1}
+                A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}
+                L ${ix2} ${iy2}
+                A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${ix1} ${iy1}
+                Z
+              `;
 
-            return <Path key={item.label} d={d} fill={item.color} />;
-          })}
+              return <Path key={item.label} d={d} fill={item.color} />;
+            })
+          )}
         </Svg>
         <View className="absolute items-center justify-center">
           <Text className="text-slate-400 text-[10px] font-medium uppercase tracking-widest">Spent</Text>
-          <Text className="text-white text-xl font-bold">{formatCurrency(total).split('.')[0]}</Text>
+          <Text className="text-white text-xl font-bold">{formatCurrency(total || 0).split('.')[0]}</Text>
         </View>
       </View>
     </View>
