@@ -133,13 +133,13 @@ export default function AddTransaction() {
         <View className="flex-row bg-slate-900 p-1.5 rounded-2xl mb-8">
           <Pressable 
             onPress={() => { setType('expense'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-            className={`flex-1 py-3 rounded-xl items-center ${type === 'expense' ? 'bg-slate-800 shadow-sm' : ''}`}
+            className={`flex-1 py-3 rounded-xl items-center ${type === 'expense' ? 'bg-slate-800' : ''}`}
           >
             <Text className={`font-bold ${type === 'expense' ? 'text-white' : 'text-slate-500'}`}>Expense</Text>
           </Pressable>
           <Pressable 
             onPress={() => { setType('income'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-            className={`flex-1 py-3 rounded-xl items-center ${type === 'income' ? 'bg-slate-800 shadow-sm' : ''}`}
+            className={`flex-1 py-3 rounded-xl items-center ${type === 'income' ? 'bg-slate-800' : ''}`}
           >
             <Text className={`font-bold ${type === 'income' ? 'text-white' : 'text-slate-500'}`}>Income</Text>
           </Pressable>
