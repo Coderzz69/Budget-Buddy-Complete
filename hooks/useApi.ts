@@ -47,6 +47,20 @@ export interface MLSummaryResponse {
   summary: any;
 }
 
+export interface Goal {
+  id: string;
+  name: string;
+  target_amount: number;
+  saved_amount: number;
+  monthly_contribution: number;
+  icon?: string;
+  color?: string;
+  months_remaining: number | null;
+  progress_pct: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export const useApi = () => {
   const { getToken } = useAuth();
   
@@ -110,5 +124,12 @@ export const useApi = () => {
     getMLSummary: async () => api.get<MLSummaryResponse>('/ml/summary/'),
     predictCategory: async (note: string, amount: number) => 
       api.post<MLPredictionResponse>('/ml/categorize/', { note, amount }),
+
+    // Goals
+    getGoals: async () => api.get<Goal[]>('/goals/'),
+    createGoal: async (data: Omit<Goal, 'id' | 'months_remaining' | 'progress_pct' | 'created_at' | 'updated_at'>) =>
+      api.post<Goal>('/goals/', data),
+    updateGoal: async (id: string, data: Partial<Goal>) => api.patch<Goal>(`/goals/${id}/`, data),
+    deleteGoal: async (id: string) => api.delete(`/goals/${id}/`),
   }), [api]);
 };

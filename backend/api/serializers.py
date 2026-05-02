@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     User, Account, Category, Transaction, Budget,
     InsightSnapshot, RecurringPattern, NormalizedMerchant, ModelPrediction,
-    UserBehaviorProfile, PredictionCache, Alert
+    UserBehaviorProfile, PredictionCache, Alert, Goal
 )
 
 
@@ -176,3 +176,29 @@ class AlertSerializer(serializers.ModelSerializer):
     class Meta:
         model = Alert
         fields = '__all__'
+
+
+class GoalSerializer(serializers.ModelSerializer):
+    id = serializers.CharField(read_only=True)
+    months_remaining = serializers.SerializerMethodField()
+    progress_pct = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Goal
+        fields = [
+            'id', 'name', 'target_amount', 'saved_amount',
+            'monthly_contribution', 'icon', 'color',
+            'created_at', 'updated_at', 'months_remaining', 'progress_pct'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'months_remaining', 'progress_pct']
+
+    def get_months_remaining(self, obj):
+        return obj.months_remaining
+
+    def get_progress_pct(self, obj):
+        return obj.progress_pct
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        ret['id'] = str(instance.id)
+        return ret

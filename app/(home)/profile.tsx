@@ -150,7 +150,7 @@ export default function Profile() {
 
   return (
     <SafeAreaView className="flex-1 bg-slate-950" edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} className="flex-1">
+      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" className="flex-1">
         {/* Profile Header */}
         <View className="items-center py-8">
           <View className="relative">

@@ -151,7 +151,7 @@ export default function SignupScreen() {
         >
             <ScrollView
                 contentContainerStyle={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
+                showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
             >
                 <Animated.View
                     entering={FadeInDown.duration(600).springify()}

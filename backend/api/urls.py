@@ -5,7 +5,7 @@ from .views import (
     SyncUserView, AccountViewSet, CategoryViewSet,
     TransactionViewSet, BudgetViewSet, DashboardView, UserProfileView,
     InsightsSummaryView, MLSummaryView, MLCategorizeView, UploadStatementView,
-    BehaviorProfileView, ForecastView, AlertsView, SimulateSavingsView
+    BehaviorProfileView, ForecastView, AlertsView, SimulateSavingsView, GoalViewSet
 )
 
 from .insights import InsightsEngineView
@@ -15,6 +15,7 @@ router.register(r'accounts', AccountViewSet, basename='account')
 router.register(r'categories', CategoryViewSet, basename='category')
 router.register(r'transactions', TransactionViewSet, basename='transaction')
 router.register(r'budgets', BudgetViewSet, basename='budget')
+router.register(r'goals', GoalViewSet, basename='goal')
 
 urlpatterns = [
     path('auth/sync-user/', SyncUserView.as_view(), name='sync-user'),

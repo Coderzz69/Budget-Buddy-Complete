@@ -118,7 +118,7 @@ export default function EditAccount() {
       <ScrollView
         style={styles.flex}
         contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       >
         <View style={styles.header}>
           <Text style={styles.title}>Edit Account</Text>

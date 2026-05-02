@@ -115,7 +115,7 @@ export default function SignIn() {
         <ScrollView 
           contentContainerStyle={{ flexGrow: 1 }} 
           className="px-6 py-10"
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
         >
           {/* Logo & Header */}
           <View className="items-center mt-10 mb-12">
