@@ -22,7 +22,7 @@ export function GlassCard({ className, intensity = 'medium', children, ...props 
   return (
     <View
       className={cn(
-        'rounded-2xl border backdrop-blur-md overflow-hidden',
+        'rounded-2xl border overflow-hidden',
         intensityStyles[intensity],
         className
       )}

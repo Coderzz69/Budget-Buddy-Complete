@@ -1,5 +1,6 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
+import { View, Text, Pressable, Platform } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { GlassCard } from '../../components/GlassCard';
@@ -88,7 +89,14 @@ export default function Insights() {
 
   return (
     <SafeAreaView className="flex-1 bg-slate-950" edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" className="flex-1">
+      <ScrollView 
+        showsVerticalScrollIndicator={false} 
+        contentContainerClassName="pb-12"
+        scrollEventThrottle={16}
+        nestedScrollEnabled={true}
+        keyboardDismissMode="on-drag" 
+        className="flex-1"
+      >
         {/* Header */}
         <View className="px-6 py-4">
           <Text className="text-white text-2xl font-bold">Insights</Text>
@@ -168,7 +176,6 @@ export default function Insights() {
             </View>
           </GlassCard>
         </View>
-
         {/* Chart Section */}
         <View className="items-center justify-center mb-8">
           <GlassCard className="w-[90%] p-6 items-center justify-center" intensity="medium">
@@ -282,6 +289,56 @@ export default function Insights() {
            ) : null}
         </View>
 
+        {/* Category Breakdown (Moved back down) */}
+        {((!loading || insights) && chartData.length > 0) && (
+          <View className="px-6 mb-8">
+            <Text className="text-white text-lg font-bold mb-4">Breakdown</Text>
+            <View className="gap-3">
+              {(insights?.top_categories || []).map((cat, index) => (
+                <GlassCard key={cat.category} className="flex-row items-center p-4">
+                  <View 
+                    className="w-10 h-10 rounded-xl mr-4 items-center justify-center opacity-80"
+                    style={{ backgroundColor: (cat as any).color ? `${(cat as any).color}20` : `${PALETTE[index % PALETTE.length]}20` }}
+                  >
+                    <IconSymbol 
+                      name={(cat as any).icon || 'ellipsis.circle.fill'} 
+                      size={20} 
+                      color={(cat as any).color || PALETTE[index % PALETTE.length]} 
+                    />
+                  </View>
+                  <View className="flex-1 mr-4">
+                    <View className="flex-row justify-between items-center mb-1">
+                      <Text className="text-white font-medium">{cat.category}</Text>
+                      {(cat as any).budget > 0 && (
+                        <Text className="text-slate-400 text-[10px]">
+                          of {formatCurrency((cat as any).budget)}
+                        </Text>
+                      )}
+                    </View>
+                    {(cat as any).budget > 0 ? (
+                      <View className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+                        <View 
+                          className="h-full rounded-full"
+                          style={{ 
+                            width: `${Math.min((cat.amount / (cat as any).budget) * 100, 100)}%`,
+                            backgroundColor: cat.amount > (cat as any).budget ? '#EF4444' : ((cat as any).color || PALETTE[index % PALETTE.length])
+                          }}
+                        />
+                      </View>
+                    ) : (
+                      <Text className="text-slate-500 text-[10px]">No budget set</Text>
+                    )}
+                  </View>
+                  <View className="items-end">
+                    <Text className="text-white font-bold">{formatCurrency(cat.amount)}</Text>
+                    <Text className="text-slate-400 text-[10px]">{cat.percentage.toFixed(0)}% of spend</Text>
+                  </View>
+                </GlassCard>
+              ))}
+            </View>
+          </View>
+        )}
+
         {/* Active Goals / Savings Targets */}
         {(!loading || insights) && goals.length > 0 && (
           <View className="px-6 mb-8">
@@ -348,55 +405,8 @@ export default function Insights() {
           </View>
         )}
 
-        {/* Category Breakdown */}
-        {((!loading || insights) && chartData.length > 0) && (
-          <View className="px-6 mb-24">
-            <Text className="text-white text-lg font-bold mb-4">Breakdown</Text>
-            <View className="gap-3">
-              {(insights?.top_categories || []).map((cat, index) => (
-                <GlassCard key={cat.category} className="flex-row items-center p-4">
-                  <View 
-                    className="w-10 h-10 rounded-xl mr-4 items-center justify-center opacity-80"
-                    style={{ backgroundColor: (cat as any).color ? `${(cat as any).color}20` : `${PALETTE[index % PALETTE.length]}20` }}
-                  >
-                    <IconSymbol 
-                      name={(cat as any).icon || 'ellipsis.circle.fill'} 
-                      size={20} 
-                      color={(cat as any).color || PALETTE[index % PALETTE.length]} 
-                    />
-                  </View>
-                  <View className="flex-1 mr-4">
-                    <View className="flex-row justify-between items-center mb-1">
-                      <Text className="text-white font-medium">{cat.category}</Text>
-                      {(cat as any).budget > 0 && (
-                        <Text className="text-slate-400 text-[10px]">
-                          of {formatCurrency((cat as any).budget)}
-                        </Text>
-                      )}
-                    </View>
-                    {(cat as any).budget > 0 ? (
-                      <View className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
-                        <View 
-                          className="h-full rounded-full"
-                          style={{ 
-                            width: `${Math.min((cat.amount / (cat as any).budget) * 100, 100)}%`,
-                            backgroundColor: cat.amount > (cat as any).budget ? '#EF4444' : ((cat as any).color || PALETTE[index % PALETTE.length])
-                          }}
-                        />
-                      </View>
-                    ) : (
-                      <Text className="text-slate-500 text-[10px]">No budget set</Text>
-                    )}
-                  </View>
-                  <View className="items-end">
-                    <Text className="text-white font-bold">{formatCurrency(cat.amount)}</Text>
-                    <Text className="text-slate-400 text-[10px]">{cat.percentage.toFixed(0)}% of spend</Text>
-                  </View>
-                </GlassCard>
-              ))}
-            </View>
-          </View>
-        )}
+        {/* Spacer for bottom */}
+        <View className="h-12" />
       </ScrollView>
     </SafeAreaView>
   );

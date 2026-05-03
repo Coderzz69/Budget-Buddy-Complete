@@ -11,7 +11,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { IconSymbol } from '../../components/ui/icon-symbol';
 
 export default function AddTransaction() {
-  const { accounts, categories, setTransactions, transactions, setAccounts, setDashboardSummary } = useStore();
+  const { accounts, categories, setTransactions, transactions, setAccounts, setDashboardSummary, setBudgets } = useStore();
   const api = useApi();
 
   const [type, setType] = useState<TransactionType>('expense');
@@ -98,12 +98,16 @@ export default function AddTransaction() {
 
       setTransactions([response.data, ...transactions]);
       
-      const [accountsResponse, summaryResponse] = await Promise.all([
+      const now = new Date();
+      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const [accountsResponse, summaryResponse, budgetsResponse] = await Promise.all([
         api.getAccounts(),
         api.getDashboardSummary(),
+        api.getBudgets(currentMonth),
       ]);
       setAccounts(accountsResponse.data);
       setDashboardSummary(summaryResponse.data);
+      setBudgets(budgetsResponse.data);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
