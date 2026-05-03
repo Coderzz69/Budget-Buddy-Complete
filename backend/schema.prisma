@@ -27,6 +27,7 @@ model User {
   recurringPatterns   RecurringPattern[]
   insightSnapshots    InsightSnapshot[]
   mlTrainingRows      MLTrainingRow[]
+  goals               Goal[]
 }
 
 model Account {
@@ -159,6 +160,22 @@ model MLTrainingRow {
   predictedCategory  String?
   confidence         Float?
   createdAt          DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Goal {
+  id                   String   @id @default(uuid())
+  user                 User     @relation(fields: [userId], references: [id])
+  userId               String
+  name                 String
+  target_amount        Float
+  saved_amount         Float    @default(0.0)
+  monthly_contribution Float
+  icon                 String?  @default("target")
+  color                String?  @default("#38BDF8")
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
 
   @@index([userId])
 }

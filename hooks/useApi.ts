@@ -108,7 +108,7 @@ export const useApi = () => {
     deleteTransaction: async (id: string) => api.delete(`/transactions/${id}/`),
 
     // Budgets
-    getBudgets: async () => api.get<Budget[]>('/budgets/'),
+    getBudgets: async (month?: string) => api.get<Budget[]>('/budgets/', { params: { month } }),
     createBudget: async (data: any) => api.post<Budget>('/budgets/', data),
     updateBudget: async (id: string, data: any) => api.patch<Budget>(`/budgets/${id}/`, data),
     deleteBudget: async (id: string) => api.delete(`/budgets/${id}/`),

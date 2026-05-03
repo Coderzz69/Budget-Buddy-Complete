@@ -129,9 +129,38 @@ class BudgetSerializer(serializers.ModelSerializer):
         return str(obj.user_id)
 
     def to_representation(self, instance):
+        from .models import Transaction
+        from django.db.models import Sum
+        from django.utils import timezone
+        import calendar
+
         ret = super().to_representation(instance)
         ret['id'] = str(instance.id)
         ret['categoryId'] = str(instance.category_id)
+
+        # Use the requested month if provided in context, otherwise use the budget's own month
+        request_month = self.context.get('request_month')
+        if request_month:
+            try:
+                from datetime import datetime
+                calc_date = datetime.strptime(request_month, '%Y-%m')
+            except:
+                calc_date = instance.month
+        else:
+            calc_date = instance.month
+
+        ret['month'] = calc_date.strftime('%Y-%m')
+
+        # Calculate spent for the target month and category
+        spent = Transaction.objects.filter(
+            user=instance.user,
+            category_id=instance.category_id,
+            type='expense',
+            occurredAt__year=calc_date.year,
+            occurredAt__month=calc_date.month
+        ).aggregate(total=Sum('amount'))['total'] or 0.0
+
+        ret['spent'] = float(spent)
         return ret
 
 

@@ -36,8 +36,12 @@ export default function Budget() {
   const [monthlyContribution, setMonthlyContribution] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const totalLimit = budgets.reduce((sum, b) => sum + b.limit, 0);
-  const totalSpent = budgets.reduce((sum, b) => sum + (b.spent || 0), 0);
+  const now = new Date();
+  const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const currentMonthBudgets = budgets.filter(b => b.month.startsWith(currentMonthStr));
+
+  const totalLimit = currentMonthBudgets.reduce((sum, b) => sum + b.limit, 0);
+  const totalSpent = currentMonthBudgets.reduce((sum, b) => sum + (b.spent || 0), 0);
   const overallProgress = totalLimit > 0 ? (totalSpent / totalLimit) : 0;
 
   const getCategoryName = (id: string) => categories.find(c => c.id === id)?.name || 'Category';
@@ -220,16 +224,16 @@ export default function Budget() {
                 <NeonButton title="Adjust" variant="ghost" size="sm" textClassName="text-primary" />
               </View>
               <View className="gap-4">
-                {budgets.length === 0 ? (
+                {currentMonthBudgets.length === 0 ? (
                   <EmptyState
                     icon={Layers}
-                    title="No budgets yet"
-                    description="Set monthly limits for your categories to track spending."
+                    title="No budgets for May"
+                    description="Set monthly limits for your categories to track spending for this month."
                     actionLabel="Create Budget"
                     onAction={() => router.push('/budgets/add')}
                   />
                 ) : (
-                  budgets.map((budget) => {
+                  currentMonthBudgets.map((budget) => {
                     const spent = budget.spent || 0;
                     const progress = spent / budget.limit;
                     return (

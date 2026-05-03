@@ -610,6 +610,17 @@ class TransactionViewSet(viewsets.ViewSet):
             )
 
         return None
+    
+    def _invalidate_insights_cache(self, user_id, date_obj):
+        """Invalidates the insights cache for the given user and month."""
+        try:
+            if not date_obj:
+                return
+            month_str = date_obj.strftime('%Y-%m')
+            cache_key = f"insights_{user_id}_{month_str}"
+            cache.delete(cache_key)
+        except Exception as e:
+            print(f"DEBUG: Failed to invalidate insights cache: {e}")
 
     def _serialize_tx(self, tx):
         data = TransactionSerializer(tx).data
@@ -699,6 +710,10 @@ class TransactionViewSet(viewsets.ViewSet):
                 tx.category  # prefetch
             if tx.account_id:
                 tx.account  # prefetch
+            
+            # Invalidate insights cache
+            self._invalidate_insights_cache(user.id, tx.occurredAt)
+            
             return Response(self._serialize_tx(tx), status=status.HTTP_201_CREATED)
 
         except Account.DoesNotExist:
@@ -766,6 +781,10 @@ class TransactionViewSet(viewsets.ViewSet):
                 tx.save()
 
             tx.refresh_from_db()
+            
+            # Invalidate insights cache (for the new date)
+            self._invalidate_insights_cache(user.id, tx.occurredAt)
+            
             return Response(self._serialize_tx(tx))
 
         except Account.DoesNotExist:
@@ -788,7 +807,13 @@ class TransactionViewSet(viewsets.ViewSet):
                 delta = tx.amount if tx.type == 'income' else -tx.amount
                 account.balance -= delta
                 account.save()
+                user_id = user.id
+                month_date = tx.occurredAt
                 tx.delete()
+                
+            # Invalidate insights cache
+            self._invalidate_insights_cache(user_id, month_date)
+            
             return Response(status=status.HTTP_204_NO_CONTENT)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -802,8 +827,18 @@ class BudgetViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
-        budgets = Budget.objects.filter(user=request.user.db_user).select_related('category')
-        return Response(BudgetSerializer(budgets, many=True).data)
+        month_param = request.query_params.get('month')
+        if not month_param:
+            from django.utils import timezone
+            month_param = timezone.now().strftime('%Y-%m')
+
+        # Get the latest budget for each category for this user using Postgres-specific distinct()
+        budgets = Budget.objects.filter(
+            user=request.user.db_user
+        ).order_by('category_id', '-month', '-createdAt').distinct('category_id').select_related('category')
+        
+        # Pass the requested month to the serializer so it calculates 'spent' for THAT month
+        return Response(BudgetSerializer(budgets, many=True, context={'request_month': month_param}).data)
 
     def retrieve(self, request, pk=None):
         budget = Budget.objects.filter(id=pk, user=request.user.db_user).first()
